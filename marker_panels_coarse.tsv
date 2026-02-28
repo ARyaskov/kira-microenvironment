@@ -1,0 +1,35 @@
+# =========================
+# TUMOR (epithelial)
+# =========================
+tumor	EPCAM	1.0
+tumor	KRT8	1.0
+tumor	KRT18	1.0
+tumor	KRT19	1.0
+tumor	KRT7	0.8
+tumor	MUC1	0.8
+tumor	CLDN3	0.8
+tumor	CLDN4	0.8
+
+# =========================
+# IMMUNE (pan-immune)
+# =========================
+immune	PTPRC	1.0
+immune	CD3D	0.8
+immune	CD3E	0.8
+immune	LST1	0.8
+immune	TYROBP	0.8
+immune	MS4A1	0.8
+immune	NKG7	0.8
+immune	FCER1G	0.6
+
+# =========================
+# STROMAL
+# =========================
+stromal	COL1A1	1.0
+stromal	COL1A2	1.0
+stromal	DCN	1.0
+stromal	LUM	0.8
+stromal	COL3A1	0.8
+stromal	PECAM1	0.8
+stromal	VWF	0.8
+stromal	RGS5	0.6

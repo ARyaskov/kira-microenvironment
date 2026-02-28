@@ -1,0 +1,47 @@
+regime	class	notes
+# =========================
+# LOUD (stress / inflammatory / damage)
+# =========================
+INFLAMMATORY	LOUD	pro-inflammatory cytokines, NFkB
+STRESS_RESPONSE	LOUD	ISR, oxidative, heat shock
+IFN_RESPONSE	LOUD	type I / II interferon
+CYTOKINE_STORM	LOUD	high TNF/IL1/IL6
+DAMAGE_RESPONSE	LOUD	alarmins, tissue damage
+HYPOXIC_STRESS	LOUD	acute hypoxia with stress
+ER_STRESS	LOUD	UPR / ER overload
+DNA_DAMAGE	LOUD	genotoxic stress
+IMMUNE_ACTIVE	LOUD	active immune engagement
+
+# =========================
+# SILENT (niche / suppressive / compensated)
+# =========================
+TOLEROGENIC	SILENT	immune tolerance
+IMMUNE_SUPPRESSIVE	SILENT	checkpoints, IL10, TGFB
+TGFb_DOMINANT	SILENT	TGFb-driven niche
+MYELOID_SUPPRESSIVE	SILENT	TAM/MDSC dominance
+STROMAL_NICHE	SILENT	fibroblast / ECM niche
+QUIESCENT	SILENT	low stress, low signaling
+METABOLIC_ADAPTATION	SILENT	compensated metabolism
+HYPOXIA_COMPENSATED	SILENT	chronic hypoxia without stress
+ANGIOGENIC_NICHE	SILENT	stable vascular niche
+
+# =========================
+# MIXED / TRANSITIONAL
+# =========================
+ADAPTIVE	MIXED	adaptive reprogramming
+TRANSITIONAL	MIXED	state transition
+PARTIALLY_ACTIVE	MIXED	mixed signals
+PROLIFERATIVE	MIXED	cell cycle active but not stressed
+
+# =========================
+# IGNORE (do not use for loud/silent)
+# =========================
+CELL_CYCLE	IGNORE	pure proliferation
+G1S	IGNORE	cell cycle phase
+G2M	IGNORE	cell cycle phase
+MITOTIC	IGNORE	cell cycle phase
+HOUSEKEEPING	IGNORE	baseline
+RIBOSOMAL	IGNORE	ribosome abundance
+MITOCHONDRIAL	IGNORE	mitochondrial content
+LOW_QUALITY	IGNORE	technical / QC
+UNASSIGNED	IGNORE	no confident regime

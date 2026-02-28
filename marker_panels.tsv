@@ -1,0 +1,224 @@
+# =====================================================
+# TUMOR / EPITHELIAL
+# =====================================================
+tumor_epithelial	EPCAM	1.0
+tumor_epithelial	KRT8	1.0
+tumor_epithelial	KRT18	1.0
+tumor_epithelial	KRT19	1.0
+tumor_epithelial	KRT7	0.8
+tumor_epithelial	MUC1	0.8
+tumor_epithelial	MUC4	0.8
+tumor_epithelial	TACSTD2	0.8	# EPCAM alias
+tumor_epithelial	CLDN3	0.8
+tumor_epithelial	CLDN4	0.8
+
+# =====================================================
+# T CELLS (pan)
+# =====================================================
+T_cell	CD3D	1.0
+T_cell	CD3E	1.0
+T_cell	CD3G	1.0
+T_cell	TRBC1	0.8
+T_cell	TRBC2	0.8
+T_cell	LCK	0.8
+T_cell	MALAT1	0.2	# weak support only
+
+# -----------------------------------------------------
+# CD8 T
+# -----------------------------------------------------
+T_cell_CD8	CD8A	1.0
+T_cell_CD8	CD8B	1.0
+T_cell_CD8	GZMB	0.8
+T_cell_CD8	NKG7	0.8
+T_cell_CD8	PRF1	0.8
+
+# -----------------------------------------------------
+# CD8 CYTOTOXIC
+# -----------------------------------------------------
+T_cell_CD8_cytotoxic	CD8A	1.0
+T_cell_CD8_cytotoxic	CD8B	1.0
+T_cell_CD8_cytotoxic	GZMB	1.0
+T_cell_CD8_cytotoxic	PRF1	1.0
+T_cell_CD8_cytotoxic	NKG7	0.8
+T_cell_CD8_cytotoxic	GNLY	0.8
+T_cell_CD8_cytotoxic	IFNG	0.6
+
+# -----------------------------------------------------
+# CD8 EXHAUSTED
+# -----------------------------------------------------
+T_cell_CD8_exhausted	PDCD1	1.0
+T_cell_CD8_exhausted	LAG3	0.9
+T_cell_CD8_exhausted	TIGIT	0.9
+T_cell_CD8_exhausted	HAVCR2	0.8
+T_cell_CD8_exhausted	CTLA4	0.8
+T_cell_CD8_exhausted	TOX	0.8
+T_cell_CD8_exhausted	ENTPD1	0.7
+T_cell_CD8_exhausted	CXCL13	0.6
+
+# -----------------------------------------------------
+# CD4 T
+# -----------------------------------------------------
+T_cell_CD4	CD4	1.0
+T_cell_CD4	IL7R	0.8
+T_cell_CD4	CCR7	0.6
+T_cell_CD4	LTB	0.6
+
+# -----------------------------------------------------
+# TREG
+# -----------------------------------------------------
+Treg	FOXP3	1.0
+Treg	IL2RA	1.0
+Treg	CTLA4	0.8
+Treg	IKZF2	0.8
+Treg	TNFRSF18	0.6	# GITR
+
+# =====================================================
+# NK CELLS
+# =====================================================
+NK	NKG7	1.0
+NK	KLRD1	1.0
+NK	KLRC1	0.8
+NK	KLRC2	0.8
+NK	FCGR3A	0.6
+NK	GNLY	0.8
+
+# =====================================================
+# B CELLS
+# =====================================================
+B_cell	MS4A1	1.0
+B_cell	CD79A	1.0
+B_cell	CD79B	0.8
+B_cell	CD37	0.6
+B_cell	HLA-DRA	0.4
+
+# -----------------------------------------------------
+# Plasma cells
+# -----------------------------------------------------
+Plasma_cell	MZB1	1.0
+Plasma_cell	XBP1	1.0
+Plasma_cell	SDC1	0.8
+Plasma_cell	JCHAIN	0.8
+
+# =====================================================
+# MYELOID
+# =====================================================
+Myeloid	LST1	1.0
+Myeloid	TYROBP	1.0
+Myeloid	CTSD	0.8
+Myeloid	FCER1G	0.8
+Myeloid	AIF1	0.6
+
+# -----------------------------------------------------
+# MONOCYTES
+# -----------------------------------------------------
+Monocyte	LYZ	1.0
+Monocyte	S100A8	0.8
+Monocyte	S100A9	0.8
+Monocyte	CTSS	0.6
+
+# -----------------------------------------------------
+# MACROPHAGES / TAM
+# -----------------------------------------------------
+Macrophage	C1QA	1.0
+Macrophage	C1QB	1.0
+Macrophage	C1QC	1.0
+Macrophage	APOE	0.8
+Macrophage	SPP1	0.8
+
+# -----------------------------------------------------
+# MACROPHAGE M2-like
+# -----------------------------------------------------
+Macrophage_M2	CD163	1.0
+Macrophage_M2	MRC1	1.0
+Macrophage_M2	MSR1	0.9
+Macrophage_M2	IL10	0.8
+Macrophage_M2	TGFB1	0.8
+Macrophage_M2	C1QC	0.6
+
+# -----------------------------------------------------
+# DENDRITIC CELLS
+# -----------------------------------------------------
+DC	FCER1A	1.0
+DC	CLEC10A	0.8
+DC	ITGAX	0.8
+DC	CD1C	0.8
+
+# -----------------------------------------------------
+# pDC
+# -----------------------------------------------------
+pDC	GZMB	1.0
+pDC	GZMB	1.0
+pDC	IRF7	0.8
+pDC	TCF4	0.8
+
+# =====================================================
+# NEUTROPHILS
+# =====================================================
+Neutrophil	S100A8	1.0
+Neutrophil	S100A9	1.0
+Neutrophil	FCGR3B	1.0
+Neutrophil	CSF3R	0.8
+
+# =====================================================
+# STROMA
+# =====================================================
+Fibroblast	COL1A1	1.0
+Fibroblast	COL1A2	1.0
+Fibroblast	DCN	1.0
+Fibroblast	LUM	0.8
+Fibroblast	COL3A1	0.8
+
+# -----------------------------------------------------
+# CAF (activated fibroblasts)
+# -----------------------------------------------------
+CAF	ACTA2	1.0
+CAF	TAGLN	0.8
+CAF	MYH11	0.8
+CAF	COL1A1	0.6
+
+# =====================================================
+# ENDOTHELIAL
+# =====================================================
+Endothelial	PECAM1	1.0
+Endothelial	VWF	1.0
+Endothelial	KDR	0.8
+Endothelial	FLT1	0.8
+Endothelial	ENG	0.6
+
+# =====================================================
+# LYMPHATIC ENDOTHELIAL
+# =====================================================
+Lymphatic_endothelial	PROX1	1.0
+Lymphatic_endothelial	PDPN	1.0
+Lymphatic_endothelial	LYVE1	0.8
+Lymphatic_endothelial	FLT4	0.8
+
+# =====================================================
+# PERICYTES / SMOOTH MUSCLE
+# =====================================================
+Pericyte	RGS5	1.0
+Pericyte	CSPG4	1.0
+Pericyte	MCAM	0.8
+Pericyte	NOTCH3	0.8
+
+Smooth_muscle	ACTA2	1.0
+Smooth_muscle	MYH11	1.0
+Smooth_muscle	TAGLN	0.8
+
+# =====================================================
+# NEUROENDOCRINE / RARE
+# =====================================================
+Neuroendocrine	CHGA	1.0
+Neuroendocrine	CHGB	1.0
+Neuroendocrine	SYP	0.8
+Neuroendocrine	ENO2	0.8
+
+# =====================================================
+# MISC / FALLBACK
+# =====================================================
+Erythrocyte	HBB	1.0
+Erythrocyte	HBA1	1.0
+Erythrocyte	HBA2	1.0
+
+Platelet	PPBP	1.0
+Platelet	PF4	1.0

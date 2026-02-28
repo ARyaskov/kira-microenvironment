@@ -1,0 +1,43 @@
+# =========================
+# IMMUNE should NOT express epithelial markers
+# =========================
+immune	EPCAM	1.5
+immune	KRT8	1.0
+immune	KRT18	1.0
+immune	KRT19	1.0
+immune	MUC1	1.0
+
+# =========================
+# TUMOR should NOT express immune markers
+# =========================
+tumor	PTPRC	1.5
+tumor	CD3D	1.0
+tumor	CD3E	1.0
+tumor	LST1	1.0
+tumor	TYROBP	1.0
+
+# =========================
+# STROMAL penalties
+# =========================
+stromal	EPCAM	1.0
+stromal	PTPRC	1.0
+
+# =========================
+# Fine-level anti-markers
+# =========================
+T_cell	EPCAM	1.0
+T_cell	LST1	0.8
+T_cell_CD8_cytotoxic	PDCD1	1.0
+T_cell_CD8_cytotoxic	LAG3	1.0
+T_cell_CD8_cytotoxic	TIGIT	1.0
+T_cell_CD8_exhausted	PRF1	0.8
+T_cell_CD8_exhausted	GNLY	0.8
+
+Macrophage	CD3D	1.0
+Macrophage	CD3E	1.0
+Macrophage_M2	CD3D	1.0
+Macrophage_M2	CD3E	1.0
+Macrophage_M2	NKG7	0.8
+
+Fibroblast	PTPRC	1.0
+Fibroblast	CD3D	1.0

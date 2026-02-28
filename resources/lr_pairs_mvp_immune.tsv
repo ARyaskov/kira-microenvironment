@@ -1,0 +1,118 @@
+ligand_symbol	receptor_symbol	family	directionality	weight	notes
+# --- Checkpoints / inhibitory ---
+CD274	PDCD1	checkpoint	L->R	1.0	PD-L1 -> PD-1
+PDCD1LG2	PDCD1	checkpoint	L->R	1.0	PD-L2 -> PD-1
+CD80	CTLA4	checkpoint	L->R	1.0	CD80 -> CTLA4
+CD86	CTLA4	checkpoint	L->R	1.0	CD86 -> CTLA4
+LGALS9	HAVCR2	checkpoint	L->R	1.0	Gal-9 -> TIM3
+PVR	TIGIT	checkpoint	L->R	1.0	PVR -> TIGIT
+NECTIN2	TIGIT	checkpoint	L->R	1.0	NECTIN2 -> TIGIT
+CD48	CD244	checkpoint	L->R	1.0	CD48 -> 2B4
+CLEC2D	KLRB1	checkpoint	L->R	1.0	CLEC2D -> CD161
+HLAE	KLRC1	checkpoint	L->R	1.0	HLA-E -> NKG2A
+TNFRSF14	BTLA	checkpoint	L->R	1.0	HVEM -> BTLA
+TNFSF14	TNFRSF14	checkpoint	L->R	1.0	LIGHT -> HVEM
+
+# --- Immunosuppressive / tolerogenic cytokines ---
+TGFB1	TGFBR1	TGFb	L->R	1.0
+TGFB1	TGFBR2	TGFb	L->R	1.0
+TGFB2	TGFBR1	TGFb	L->R	1.0
+TGFB2	TGFBR2	TGFb	L->R	1.0
+TGFB3	TGFBR1	TGFb	L->R	1.0
+TGFB3	TGFBR2	TGFb	L->R	1.0
+IL10	IL10RA	IL10	L->R	1.0	requires IL10RB
+IL10	IL10RB	IL10	L->R	1.0
+IL6	IL6R	IL6_family	L->R	1.0	requires IL6ST
+IL6	IL6ST	IL6_family	L->R	1.0
+IL11	IL11RA	IL6_family	L->R	1.0	requires IL6ST
+IL11	IL6ST	IL6_family	L->R	1.0
+OSM	OSMR	IL6_family	L->R	1.0	requires IL6ST
+OSM	IL6ST	IL6_family	L->R	1.0
+LIF	LIFR	IL6_family	L->R	1.0	requires IL6ST
+LIF	IL6ST	IL6_family	L->R	1.0
+IL27A	IL27RA	IL12_like	L->R	1.0	IL27A+EBI3 heterodimer; receptor uses IL6ST
+IL27A	IL6ST	IL12_like	L->R	1.0
+
+# --- Pro-inflammatory / stress ---
+TNF	TNFRSF1A	TNF	L->R	1.0
+TNF	TNFRSF1B	TNF	L->R	1.0
+LTA	TNFRSF1A	TNF	L->R	1.0
+LTA	TNFRSF1B	TNF	L->R	1.0
+IL1A	IL1R1	IL1	L->R	1.0
+IL1B	IL1R1	IL1	L->R	1.0
+IL33	IL1RL1	IL1	L->R	1.0
+IFNG	IFNGR1	IFN	L->R	1.0	requires IFNGR2
+IFNG	IFNGR2	IFN	L->R	1.0
+IFNA1	IFNAR1	IFN	L->R	1.0	requires IFNAR2
+IFNA1	IFNAR2	IFN	L->R	1.0
+IFNB1	IFNAR1	IFN	L->R	1.0
+IFNB1	IFNAR2	IFN	L->R	1.0
+
+# --- T cell growth / maintenance (contextual) ---
+IL2	IL2RA	IL2	L->R	1.0	IL2R complex (IL2RB/IL2RG core)
+IL2	IL2RB	IL2	L->R	1.0
+IL2	IL2RG	IL2	L->R	1.0
+IL15	IL15RA	IL15	L->R	1.0	IL15R complex (IL2RB/IL2RG)
+IL15	IL2RB	IL15	L->R	1.0
+IL15	IL2RG	IL15	L->R	1.0
+
+# --- Chemokines (T/NK) ---
+CXCL9	CXCR3	chemokine	L->R	1.0
+CXCL10	CXCR3	chemokine	L->R	1.0
+CXCL11	CXCR3	chemokine	L->R	1.0
+CCL5	CCR5	chemokine	L->R	1.0
+CCL3	CCR5	chemokine	L->R	1.0
+CCL4	CCR5	chemokine	L->R	1.0
+CCL19	CCR7	chemokine	L->R	1.0
+CCL21	CCR7	chemokine	L->R	1.0
+CXCL12	CXCR4	chemokine	L->R	1.0
+CXCL12	ACKR3	chemokine	L->R	1.0
+CXCL13	CXCR5	chemokine	L->R	1.0
+CXCL16	CXCR6	chemokine	L->R	1.0
+XCL1	XCR1	chemokine	L->R	1.0
+
+# --- Chemokines (Treg / immunosuppressive recruitment) ---
+CCL17	CCR4	chemokine	L->R	1.0
+CCL22	CCR4	chemokine	L->R	1.0
+CCL20	CCR6	chemokine	L->R	1.0
+
+# --- Chemokines (myeloid / neutrophils / monocytes) ---
+CCL2	CCR2	chemokine	L->R	1.0
+CCL7	CCR2	chemokine	L->R	1.0
+CCL8	CCR2	chemokine	L->R	1.0
+CCL3	CCR1	chemokine	L->R	1.0
+CCL5	CCR1	chemokine	L->R	1.0
+CXCL1	CXCR2	chemokine	L->R	1.0
+CXCL2	CXCR2	chemokine	L->R	1.0
+CXCL3	CXCR2	chemokine	L->R	1.0
+CXCL5	CXCR2	chemokine	L->R	1.0
+CXCL8	CXCR1	chemokine	L->R	1.0
+CXCL8	CXCR2	chemokine	L->R	1.0
+CX3CL1	CX3CR1	chemokine	L->R	1.0
+
+# --- Myeloid survival / TAM programming ---
+CSF1	CSF1R	myeloid	L->R	1.0
+IL34	CSF1R	myeloid	L->R	1.0
+CSF2	CSF2RA	myeloid	L->R	1.0	requires CSF2RB
+CSF2	CSF2RB	myeloid	L->R	1.0
+CSF3	CSF3R	myeloid	L->R	1.0
+MIF	CD74	myeloid	L->R	1.0
+MIF	CXCR4	myeloid	L->R	1.0
+MIF	ACKR3	myeloid	L->R	1.0
+SPP1	ITGAV	myeloid	L->R	1.0	integrin axis
+SPP1	ITGB5	myeloid	L->R	1.0
+SPP1	CD44	myeloid	L->R	1.0
+LGALS3	CD44	galectin	L->R	1.0
+
+# --- Co-stimulation / APC-T cell interactions (context) ---
+TNFSF9	TNFRSF9	costim	L->R	1.0	4-1BBL -> 4-1BB
+TNFSF4	TNFRSF4	costim	L->R	1.0	OX40L -> OX40
+CD40LG	CD40	costim	L->R	1.0
+TNFSF13B	TNFRSF13B	Bcell	costim	L->R	1.0	BAFF -> TACI
+TNFSF13B	TNFRSF13C	Bcell	costim	L->R	1.0	BAFF -> BAFFR
+
+# --- Adhesion (immune trafficking) ---
+ICAM1	ITGAL	adhesion	L->R	1.0
+ICAM1	ITGB2	adhesion	L->R	1.0
+VCAM1	ITGA4	adhesion	L->R	1.0
+VCAM1	ITGB1	adhesion	L->R	1.0

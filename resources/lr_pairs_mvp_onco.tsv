@@ -1,0 +1,180 @@
+ligand_symbol	receptor_symbol	family	directionality	weight	notes
+# =========================
+# IMMUNE CORE (same as mvp_immune)
+# =========================
+CD274	PDCD1	checkpoint	L->R	1.0
+PDCD1LG2	PDCD1	checkpoint	L->R	1.0
+CD80	CTLA4	checkpoint	L->R	1.0
+CD86	CTLA4	checkpoint	L->R	1.0
+LGALS9	HAVCR2	checkpoint	L->R	1.0
+PVR	TIGIT	checkpoint	L->R	1.0
+NECTIN2	TIGIT	checkpoint	L->R	1.0
+CD48	CD244	checkpoint	L->R	1.0
+CLEC2D	KLRB1	checkpoint	L->R	1.0
+HLAE	KLRC1	checkpoint	L->R	1.0
+TNFRSF14	BTLA	checkpoint	L->R	1.0
+TNFSF14	TNFRSF14	checkpoint	L->R	1.0
+TGFB1	TGFBR1	TGFb	L->R	1.0
+TGFB1	TGFBR2	TGFb	L->R	1.0
+TGFB2	TGFBR1	TGFb	L->R	1.0
+TGFB2	TGFBR2	TGFb	L->R	1.0
+TGFB3	TGFBR1	TGFb	L->R	1.0
+TGFB3	TGFBR2	TGFb	L->R	1.0
+IL10	IL10RA	IL10	L->R	1.0
+IL10	IL10RB	IL10	L->R	1.0
+IL6	IL6R	IL6_family	L->R	1.0
+IL6	IL6ST	IL6_family	L->R	1.0
+IL11	IL11RA	IL6_family	L->R	1.0
+IL11	IL6ST	IL6_family	L->R	1.0
+OSM	OSMR	IL6_family	L->R	1.0
+OSM	IL6ST	IL6_family	L->R	1.0
+LIF	LIFR	IL6_family	L->R	1.0
+LIF	IL6ST	IL6_family	L->R	1.0
+IL27A	IL27RA	IL12_like	L->R	1.0
+IL27A	IL6ST	IL12_like	L->R	1.0
+TNF	TNFRSF1A	TNF	L->R	1.0
+TNF	TNFRSF1B	TNF	L->R	1.0
+LTA	TNFRSF1A	TNF	L->R	1.0
+LTA	TNFRSF1B	TNF	L->R	1.0
+IL1A	IL1R1	IL1	L->R	1.0
+IL1B	IL1R1	IL1	L->R	1.0
+IL33	IL1RL1	IL1	L->R	1.0
+IFNG	IFNGR1	IFN	L->R	1.0
+IFNG	IFNGR2	IFN	L->R	1.0
+IFNA1	IFNAR1	IFN	L->R	1.0
+IFNA1	IFNAR2	IFN	L->R	1.0
+IFNB1	IFNAR1	IFN	L->R	1.0
+IFNB1	IFNAR2	IFN	L->R	1.0
+IL2	IL2RA	IL2	L->R	1.0
+IL2	IL2RB	IL2	L->R	1.0
+IL2	IL2RG	IL2	L->R	1.0
+IL15	IL15RA	IL15	L->R	1.0
+IL15	IL2RB	IL15	L->R	1.0
+IL15	IL2RG	IL15	L->R	1.0
+CXCL9	CXCR3	chemokine	L->R	1.0
+CXCL10	CXCR3	chemokine	L->R	1.0
+CXCL11	CXCR3	chemokine	L->R	1.0
+CCL5	CCR5	chemokine	L->R	1.0
+CCL3	CCR5	chemokine	L->R	1.0
+CCL4	CCR5	chemokine	L->R	1.0
+CCL19	CCR7	chemokine	L->R	1.0
+CCL21	CCR7	chemokine	L->R	1.0
+CXCL12	CXCR4	chemokine	L->R	1.0
+CXCL12	ACKR3	chemokine	L->R	1.0
+CXCL13	CXCR5	chemokine	L->R	1.0
+CXCL16	CXCR6	chemokine	L->R	1.0
+XCL1	XCR1	chemokine	L->R	1.0
+CCL17	CCR4	chemokine	L->R	1.0
+CCL22	CCR4	chemokine	L->R	1.0
+CCL20	CCR6	chemokine	L->R	1.0
+CCL2	CCR2	chemokine	L->R	1.0
+CCL7	CCR2	chemokine	L->R	1.0
+CCL8	CCR2	chemokine	L->R	1.0
+CCL3	CCR1	chemokine	L->R	1.0
+CCL5	CCR1	chemokine	L->R	1.0
+CXCL1	CXCR2	chemokine	L->R	1.0
+CXCL2	CXCR2	chemokine	L->R	1.0
+CXCL3	CXCR2	chemokine	L->R	1.0
+CXCL5	CXCR2	chemokine	L->R	1.0
+CXCL8	CXCR1	chemokine	L->R	1.0
+CXCL8	CXCR2	chemokine	L->R	1.0
+CX3CL1	CX3CR1	chemokine	L->R	1.0
+CSF1	CSF1R	myeloid	L->R	1.0
+IL34	CSF1R	myeloid	L->R	1.0
+CSF2	CSF2RA	myeloid	L->R	1.0
+CSF2	CSF2RB	myeloid	L->R	1.0
+CSF3	CSF3R	myeloid	L->R	1.0
+MIF	CD74	myeloid	L->R	1.0
+MIF	CXCR4	myeloid	L->R	1.0
+MIF	ACKR3	myeloid	L->R	1.0
+SPP1	ITGAV	myeloid	L->R	1.0
+SPP1	ITGB5	myeloid	L->R	1.0
+SPP1	CD44	myeloid	L->R	1.0
+LGALS3	CD44	galectin	L->R	1.0
+TNFSF9	TNFRSF9	costim	L->R	1.0
+TNFSF4	TNFRSF4	costim	L->R	1.0
+CD40LG	CD40	costim	L->R	1.0
+TNFSF13B	TNFRSF13B	Bcell	costim	L->R	1.0
+TNFSF13B	TNFRSF13C	Bcell	costim	L->R	1.0
+ICAM1	ITGAL	adhesion	L->R	1.0
+ICAM1	ITGB2	adhesion	L->R	1.0
+VCAM1	ITGA4	adhesion	L->R	1.0
+VCAM1	ITGB1	adhesion	L->R	1.0
+
+# =========================
+# ONCO GROWTH / RTK / RESISTANCE
+# =========================
+EGF	EGFR	EGFR	L->R	1.0
+AREG	EGFR	EGFR	L->R	1.0
+HBEGF	EGFR	EGFR	L->R	1.0
+TGFA	EGFR	EGFR	L->R	1.0
+EREG	EGFR	EGFR	L->R	1.0
+NRG1	ERBB3	EGFR	L->R	1.0
+NRG1	ERBB4	EGFR	L->R	1.0
+HGF	MET	MET	L->R	1.0
+GAS6	AXL	TAM_RTK	L->R	1.0
+GAS6	TYRO3	TAM_RTK	L->R	1.0
+PROS1	AXL	TAM_RTK	L->R	1.0
+PROS1	MERTK	TAM_RTK	L->R	1.0
+IGF1	IGF1R	IGF	L->R	1.0
+IGF2	IGF1R	IGF	L->R	1.0
+FGF2	FGFR1	FGF	L->R	1.0
+FGF2	FGFR2	FGF	L->R	1.0
+PDGFA	PDGFRA	PDGF	L->R	1.0
+PDGFB	PDGFRB	PDGF	L->R	1.0
+KITLG	KIT	SCF	L->R	1.0
+
+# =========================
+# ANGIOGENESIS / VASCULAR REMODELING
+# =========================
+VEGFA	KDR	VEGF	L->R	1.0
+VEGFA	FLT1	VEGF	L->R	1.0
+VEGFB	FLT1	VEGF	L->R	1.0
+VEGFC	FLT4	VEGF	L->R	1.0
+ANGPT1	TEK	ANGPT	L->R	1.0
+ANGPT2	TEK	ANGPT	L->R	1.0
+FGF2	FGFR3	FGF	L->R	1.0	optional endothelial context
+EFNB2	EPHB4	ephrin	L->R	1.0
+
+# =========================
+# NOTCH / WNT / GUIDANCE (niche & invasion)
+# =========================
+JAG1	NOTCH1	NOTCH	L->R	1.0
+JAG1	NOTCH2	NOTCH	L->R	1.0
+DLL4	NOTCH1	NOTCH	L->R	1.0
+DLL4	NOTCH4	NOTCH	L->R	1.0
+WNT5A	FZD2	WNT	L->R	1.0
+WNT5A	FZD5	WNT	L->R	1.0
+WNT7A	FZD7	WNT	L->R	1.0
+SEMA3A	PLXNA1	SEMA	L->R	1.0
+SEMA3A	NRP1	SEMA	L->R	1.0
+SEMA3E	PLXND1	SEMA	L->R	1.0
+SLIT2	ROBO1	SLIT	L->R	1.0
+SLIT2	ROBO2	SLIT	L->R	1.0
+EFNA1	EPHA2	ephrin	L->R	1.0
+
+# =========================
+# ECM / ADHESION / INVASION
+# =========================
+FN1	ITGA5	integrin	L->R	1.0
+FN1	ITGB1	integrin	L->R	1.0
+COL1A1	ITGA2	integrin	L->R	1.0
+COL1A1	ITGB1	integrin	L->R	1.0
+COL4A1	ITGA1	integrin	L->R	1.0
+COL4A1	ITGB1	integrin	L->R	1.0
+LAMC1	ITGA6	integrin	L->R	1.0
+LAMC1	ITGB1	integrin	L->R	1.0
+VCAN	CD44	ECM_like	L->R	1.0
+HAS2	CD44	HA	L->R	1.0
+LGALS3	ITGAV	galectin	L->R	1.0
+SPP1	ITGAV	ECM_like	L->R	1.0
+SPP1	ITGB5	ECM_like	L->R	1.0
+
+# =========================
+# EXTRA “silent niche” helpers (common in stroma)
+# =========================
+CXCL12	CXCR4	NICHE	L->R	1.0	duplicate on purpose for emphasis in onco profile
+CXCL12	ACKR3	NICHE	L->R	1.0
+PDGFB	PDGFRB	STROMA	L->R	1.0	duplicate ok
+TGFB1	TGFBR1	NICHE	L->R	1.0	duplicate ok
+TGFB1	TGFBR2	NICHE	L->R	1.0

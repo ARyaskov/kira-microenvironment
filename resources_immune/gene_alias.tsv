@@ -1,0 +1,59 @@
+alias	symbol	priority	notes
+# --- PD-1 axis ---
+PD-1	PDCD1	1	common protein name
+PD1	PDCD1	2
+PD-L1	CD274	1	common protein name
+PDL1	CD274	2
+PD-L2	PDCD1LG2	1
+PDL2	PDCD1LG2	2
+
+# --- CTLA4 axis ---
+CTLA-4	CTLA4	1
+CTLA4	CTLA4	2
+
+# --- TIM3 / TIGIT / BTLA ---
+TIM-3	HAVCR2	1
+TIM3	HAVCR2	2
+GAL9	LGALS9	2
+2B4	CD244	1
+CD96	CD96	2
+CD155	PVR	1	CD155 is protein name; gene is PVR
+PVR	PVR	2
+HVEM	TNFRSF14	1
+LIGHT	TNFSF14	1
+BTLA	BTLA	2
+
+# --- NKG2 / CD161 ---
+NKG2A	KLRC1	1
+NKG2C	KLRC2	1
+CD161	KLRB1	1
+
+# --- Chemokine common aliases ---
+IL8	CXCL8	1
+SDF1	CXCL12	1	SDF-1
+SDF-1	CXCL12	1
+MCP-1	CCL2	1
+MCP1	CCL2	2
+
+# --- Vascular / growth factor aliases ---
+VEGFR1	FLT1	1
+VEGFR2	KDR	1
+VEGFR3	FLT4	1
+TIE2	TEK	1
+c-MET	MET	1
+cMET	MET	2
+MerTK	MERTK	1
+TYRO3	TYRO3	2
+
+# --- Receptors / decoys / special ---
+RAGE	AGER	1	RAGE protein name; gene AGER
+CXCR7	ACKR3	1
+OPN	SPP1	1	osteopontin
+BAFF	TNFSF13B	1
+BAFFR	TNFRSF13C	1
+TACI	TNFRSF13B	1
+4-1BB	TNFRSF9	1
+4-1BBL	TNFSF9	1
+OX40	TNFRSF4	1
+OX40L	TNFSF4	1
+ST2	IL1RL1	1	IL33 receptor subunit
