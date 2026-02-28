@@ -25,6 +25,10 @@ cargo install kira-microenvironment
   - `gene_alias.tsv`
   - `labels.tsv`
   - `regime_map.tsv` (for Stage4 linking)
+- If `--resources` path is missing, the binary falls back to an embedded default
+  resource bundle and materializes it under `--out/.kira-microenvironment-embedded-resources`.
+- Embedded fallback profile can be selected with `--embedded-profile onco|immune`
+  or `KIRA_MICROENV_EMBEDDED_PROFILE=onco|immune` (CLI has priority).
 - Optional `--secretion <dir>` for Stage4 linking with kira-secretion outputs.
 
 ## Usage examples

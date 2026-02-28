@@ -40,6 +40,12 @@ pub enum AutoGroupsModeArg {
     Hierarchical,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum EmbeddedProfileArg {
+    Onco,
+    Immune,
+}
+
 #[derive(Debug, Clone, Args)]
 pub struct RunArgs {
     #[arg(long)]
@@ -68,6 +74,8 @@ pub struct RunArgs {
     pub auto_groups_emit_scores: bool,
     #[arg(long)]
     pub resources: PathBuf,
+    #[arg(long, value_enum)]
+    pub embedded_profile: Option<EmbeddedProfileArg>,
     #[arg(long)]
     pub secretion: Option<PathBuf>,
     #[arg(long)]

@@ -7,6 +7,13 @@ pub fn info(message: impl AsRef<str>) {
     println!("{human}  \x1b[32mINFO\x1b[0m {}", message.as_ref());
 }
 
+pub fn warn(message: impl AsRef<str>) {
+    let ts = now_unix_millis();
+    let human = format_rfc3339_utc(ts);
+    // ANSI yellow for WARN
+    println!("{human}  \x1b[33mWARN\x1b[0m {}", message.as_ref());
+}
+
 fn now_unix_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

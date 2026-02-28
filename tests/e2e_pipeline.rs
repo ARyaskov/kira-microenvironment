@@ -134,6 +134,7 @@ fn base_cfg(
         auto_groups_unknown: "unknown".to_string(),
         auto_groups_emit_scores: false,
         resources,
+        embedded_profile: None,
         secretion,
         out,
         validate_only: false,

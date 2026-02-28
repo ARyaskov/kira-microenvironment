@@ -14,8 +14,9 @@ pub mod stages;
 pub mod version;
 
 use auto_groups::{AutoGroupsConfig, AutoGroupsMode, AutoGroupsResult, run_auto_groups};
-use cli::{AggModeArg, AutoGroupsModeArg, CapModeArg, SpecModeArg};
+use cli::{AggModeArg, AutoGroupsModeArg, CapModeArg, EmbeddedProfileArg, SpecModeArg};
 use error::{ErrorKind, KiraError, Result};
+use resources::embedded::{EmbeddedProfile, materialize_embedded_resources};
 use serde_json::{Map, Value};
 use simd::dispatch::SimdLevel;
 use stages::stage0_resolve::{Stage0Config, Stage0Result, run_stage0};
@@ -41,6 +42,7 @@ pub struct RunConfig {
     pub auto_groups_unknown: String,
     pub auto_groups_emit_scores: bool,
     pub resources: PathBuf,
+    pub embedded_profile: Option<EmbeddedProfileArg>,
     pub secretion: Option<PathBuf>,
     pub out: PathBuf,
     pub validate_only: bool,
@@ -127,6 +129,14 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
         }
     }
 
+    let embedded_profile = resolve_embedded_profile(config.embedded_profile);
+    let resources_dir = resolve_resources_dir(
+        &config.resources,
+        &config.out,
+        &config.lr_profile,
+        embedded_profile,
+    )?;
+
     let groups_path = match (&config.groups, has_auto_flags) {
         (Some(g), false) => g.clone(),
         (Some(_), true) => {
@@ -157,7 +167,7 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
             markers_coarse: config.auto_groups_coarse.clone(),
             markers_fine: config.auto_groups_fine.clone(),
             anti_markers: config.auto_groups_anti.clone(),
-            resources_dir: config.resources.clone(),
+            resources_dir: resources_dir.clone(),
             out_dir: config.out.clone(),
             eps: config.auto_groups_eps,
             min_delta: config.auto_groups_min_delta,
@@ -183,7 +193,7 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
         expr: config.expr.clone(),
         barcodes: config.barcodes,
         groups: groups_for_stage0,
-        resources_dir: config.resources.clone(),
+        resources_dir: resources_dir.clone(),
         secretion: config.secretion.clone(),
         out_dir: config.out.clone(),
         validate_only: config.validate_only,
@@ -220,7 +230,7 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
     crate::logging::info("Stage2 start: score");
     let stage2 = run_stage2(Stage2Config {
         out_dir: config.out.clone(),
-        resources_dir: config.resources.clone(),
+        resources_dir: resources_dir.clone(),
         lr_profile: config.lr_profile,
         eps: config.eps,
         cov_min: config.cov_min,
@@ -242,7 +252,7 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
         crate::logging::info("Stage4 start: secretion linking");
         Some(run_stage4(Stage4Config {
             out_dir: config.out,
-            resources_dir: config.resources,
+            resources_dir,
             secretion_dir,
             regime_map_path: config.regime_map,
             loud_thresh: config.loud_thresh,
@@ -271,6 +281,94 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
     crate::logging::info("Pipeline done");
 
     Ok(result)
+}
+
+fn resolve_resources_dir(
+    resources: &std::path::Path,
+    out_dir: &std::path::Path,
+    lr_profile: &str,
+    embedded_profile: EmbeddedProfile,
+) -> Result<PathBuf> {
+    if resources.is_dir() {
+        let mut missing = Vec::new();
+        for name in ["cofactors.tsv", "gene_alias.tsv", "labels.tsv"] {
+            let p = resources.join(name);
+            if !p.is_file() {
+                missing.push(p.display().to_string());
+            }
+        }
+        let lr_path_ok = match lr_profile {
+            "mvp" => resources.join("lr_pairs_mvp.tsv").is_file(),
+            "full" => resources.join("lr_pairs.tsv").is_file(),
+            other => {
+                let raw = PathBuf::from(other);
+                if raw.is_absolute() {
+                    raw.is_file()
+                } else {
+                    std::env::current_dir()
+                        .map(|cwd| cwd.join(raw).is_file())
+                        .unwrap_or(false)
+                }
+            }
+        };
+        if !lr_path_ok {
+            missing.push(format!("lr_profile={lr_profile}"));
+        }
+        if missing.is_empty() {
+            return Ok(resources.to_path_buf());
+        }
+        crate::logging::info(format!(
+            "resources directory incomplete ({}); using embedded resources (profile={})",
+            missing.join(", "),
+            embedded_profile.as_str()
+        ));
+        return materialize_embedded_resources(out_dir, embedded_profile);
+    }
+    if resources.exists() {
+        crate::logging::info(format!(
+            "resources path is not a directory ({}); using embedded resources (profile={})",
+            resources.display(),
+            embedded_profile.as_str()
+        ));
+        return materialize_embedded_resources(out_dir, embedded_profile);
+    }
+    crate::logging::info(format!(
+        "resources path does not exist ({}); using embedded resources (profile={})",
+        resources.display(),
+        embedded_profile.as_str()
+    ));
+    materialize_embedded_resources(out_dir, embedded_profile)
+}
+
+fn resolve_embedded_profile(cli_profile: Option<EmbeddedProfileArg>) -> EmbeddedProfile {
+    if let Some(profile) = cli_profile {
+        return map_embedded_profile(profile);
+    }
+
+    let from_env = std::env::var("KIRA_MICROENV_EMBEDDED_PROFILE")
+        .ok()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty());
+
+    match from_env.as_deref() {
+        Some("onco") => EmbeddedProfile::Onco,
+        Some("immune") => EmbeddedProfile::Immune,
+        Some(other) => {
+            crate::logging::warn(format!(
+                "invalid KIRA_MICROENV_EMBEDDED_PROFILE='{}'; falling back to 'onco'",
+                other
+            ));
+            EmbeddedProfile::Onco
+        }
+        None => EmbeddedProfile::Onco,
+    }
+}
+
+fn map_embedded_profile(profile: EmbeddedProfileArg) -> EmbeddedProfile {
+    match profile {
+        EmbeddedProfileArg::Onco => EmbeddedProfile::Onco,
+        EmbeddedProfileArg::Immune => EmbeddedProfile::Immune,
+    }
 }
 
 fn write_unified_root_summary(result: &PipelineResult) -> Result<()> {

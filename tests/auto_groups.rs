@@ -62,6 +62,7 @@ fn pipeline_runs_with_auto_groups_and_is_deterministic() {
         auto_groups_unknown: "unknown".to_string(),
         auto_groups_emit_scores: true,
         resources,
+        embedded_profile: None,
         secretion: None,
         out: out.clone(),
         validate_only: false,

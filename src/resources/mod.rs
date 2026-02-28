@@ -1,5 +1,6 @@
 pub mod aliases;
 pub mod cofactors;
+pub mod embedded;
 pub mod labels;
 pub mod lr_pairs;
 pub mod regime_map;
