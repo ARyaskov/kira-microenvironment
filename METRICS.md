@@ -5,6 +5,7 @@ This document defines canonical metrics, formulas, and constants used by `kira-m
 Scope:
 - optional Auto-groups assignment metrics
 - Stage1 aggregation metrics
+- Stage5 microenvironment extension metrics (transcriptional proxies)
 - Stage2 LR scoring metrics
 - Stage3 network metrics
 - Stage4 secretion-linking metrics
@@ -111,6 +112,55 @@ Cap metric:
 Gene statistics:
 - `mean_over_groups(gene) = average_g E[g, gene]`
 - `missing_fraction = 1.0` if gene absent in expression cache, else `0.0`
+
+## Stage5 Microenvironment Extension Metrics
+
+All Stage5 metrics are transcriptional proxies computed from one normalized scRNA-seq matrix.
+They do not measure oxygen, cytokines, checkpoint protein levels, or metabolites directly.
+
+Panel version:
+- `MICROENV_EXTENSION_PANEL_V1`
+
+Panel cores:
+- For panel `P` and cell `c`, core is `TM(P,c)`:
+  - collect panel-gene expression values for `c` (zeros for absent entries in sparse storage)
+  - compute trimmed mean with trim fraction `0.10`
+  - if resolved genes in panel `< MIN_PANEL_GENES (2)`, core is `NaN` for all cells
+
+Robust normalization:
+- For core series `S(c)`, compute:
+  - `Z(c) = (S(c) - median(S)) / (1.4826 * MAD(S) + eps)`
+  - `eps = 1e-6`
+  - if `MAD == 0`, all finite `Z(c)` are set to `0`
+
+Core metrics:
+- `hyp_core`: HIF/hypoxia panel core
+- `nfkb_core`: inflammatory (NF-kB) panel core
+- `ifn_core`: interferon response panel core
+- `checkpoint_core`: immune suppression/checkpoint panel core
+- `adenosine_core`: adenosine metabolic suppression panel core
+- `stromal_core`: ECM/stromal interaction panel core
+
+Derived scores:
+- `HSI = Z(hyp_core)`
+- `IAS = 0.6 * Z(nfkb_core) + 0.4 * Z(ifn_core)`
+- `ISS = Z(checkpoint_core)`
+- `MIO = 0.5 * Z(adenosine_core) + 0.5 * max(0, HSI)`
+- `SII = Z(stromal_core)`
+- `MSM = max(0, 0.4 * max(0, HSI) + 0.3 * max(0, ISS) + 0.3 * max(0, MIO))`
+
+Flags:
+- `hypoxia_high`: `HSI >= 2.0`
+- `inflammatory_high`: `IAS >= 2.0`
+- `immune_suppression_high`: `ISS >= 1.5`
+- `metabolic_suppression_high`: `MIO >= 1.5`
+- `stromal_high`: `SII >= 2.0`
+- `microenv_stress_mode`: `MSM >= 2.0`
+
+NaN handling:
+- if any required core/score input is `NaN`, downstream score is `NaN`
+- flags are `false` for `NaN` scores
+- missingness is recorded in Stage5 summary (`panels`, per-metric `fraction_nan`)
 
 ## Stage2 LR Edge Scoring Metrics
 

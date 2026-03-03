@@ -85,6 +85,10 @@ fn e2e_pipeline_is_deterministic_and_schema_stable() {
         &out_full.join("kira-microenvironment/stage4_link/loudness_drivers.tsv"),
         "rank\tligand\treceptor\tfold\tmean_loud\tmean_silent\tn_edges_loud\tn_edges_silent\texemplar_source_group\texemplar_target_group\texemplar_score",
     );
+    assert_file_header(
+        &out_full.join("kira-microenvironment/metrics.tsv"),
+        "cell_id\tgroup\thyp_core\tnfkb_core\tifn_core\tcheckpoint_core\tadenosine_core\tstromal_core\tHSI\tIAS\tISS\tMIO\tSII\tMSM\thypoxia_high\tinflammatory_high\timmune_suppression_high\tmetabolic_suppression_high\tstromal_high\tmicroenv_stress_mode",
+    );
 
     let summary_full = fs::read_to_string(out_full.join("kira-microenvironment/summary.json"))
         .expect("summary full");
@@ -96,6 +100,7 @@ fn e2e_pipeline_is_deterministic_and_schema_stable() {
     assert!(summary_full.contains("\"stage2\""));
     assert!(summary_full.contains("\"stage3\""));
     assert!(summary_full.contains("\"stage4\""));
+    assert!(summary_full.contains("\"microenvironment_extension\""));
     assert!(summary_full.contains("\"network\""));
     assert!(summary_full.contains("\"linking\""));
 

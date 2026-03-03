@@ -4,9 +4,10 @@
 
 1. Stage0 `resolve`
 2. Stage1 `agg`
-3. Stage2 `score`
-4. Stage3 `network`
-5. Stage4 `link` (optional; only when `--secretion` is provided)
+3. Stage5 `microenv_extension` (per-cell transcriptional proxy metrics)
+4. Stage2 `score`
+5. Stage3 `network`
+6. Stage4 `link` (optional; only when `--secretion` is provided)
 
 All outputs are under `out/kira-microenvironment/`.
 
@@ -66,6 +67,29 @@ Outputs: `out/kira-microenvironment/stage2_score/`
   - `thresholds: {cov_min, expr_min, spec_on}`
   - `cap_used`
   - `skipped: {missing_components, missing_genes}`
+
+## Stage5 Microenvironment Extension
+
+Inputs:
+- Stage0: `groups_normalized.tsv`, `resolved.json`
+- `expr.bin` (same matrix as Stage1)
+
+Outputs:
+- Root: `out/kira-microenvironment/metrics.tsv`
+  - columns:
+    - `cell_id, group`
+    - `hyp_core, nfkb_core, ifn_core, checkpoint_core, adenosine_core, stromal_core`
+    - `HSI, IAS, ISS, MIO, SII, MSM`
+    - `hypoxia_high, inflammatory_high, immune_suppression_high, metabolic_suppression_high, stromal_high, microenv_stress_mode`
+- Stage5: `out/kira-microenvironment/stage5_microenv_extension/stage5_summary.json`
+  - `panel_version`
+  - `thresholds`
+  - `global_stats`
+  - `cluster_stats`
+  - `missingness`
+
+Root `summary.json` additive block:
+- `microenvironment_extension` (same payload shape as `stage5_summary.json`)
 
 ## Stage3 Network
 

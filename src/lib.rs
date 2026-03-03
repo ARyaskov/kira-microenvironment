@@ -6,6 +6,7 @@ pub mod error;
 pub mod expr;
 pub mod io;
 pub mod logging;
+pub mod metrics;
 pub mod paths;
 pub mod resources;
 pub mod select;
@@ -24,6 +25,7 @@ use stages::stage1_agg::{Stage1Config, Stage1Result, run_stage1};
 use stages::stage2_score::{Stage2Config, Stage2Result, run_stage2};
 use stages::stage3_network::{Stage3Config, Stage3Result, run_stage3};
 use stages::stage4_link::{Stage4Config, Stage4Result, run_stage4};
+use stages::stage5_microenv_extension::{Stage5Config, Stage5Result, run_stage5};
 use std::path::PathBuf;
 use version::{TOOL_NAME, TOOL_VERSION};
 
@@ -74,6 +76,7 @@ pub struct PipelineResult {
     pub stage2: Option<Stage2Result>,
     pub stage3: Option<Stage3Result>,
     pub stage4: Option<Stage4Result>,
+    pub stage5: Option<Stage5Result>,
 }
 
 pub fn run(config: RunConfig) -> Result<PipelineResult> {
@@ -211,12 +214,13 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
             stage2: None,
             stage3: None,
             stage4: None,
+            stage5: None,
         });
     }
 
     crate::logging::info("Stage1 start: aggregate");
     let stage1 = run_stage1(Stage1Config {
-        expr: config.expr,
+        expr: config.expr.clone(),
         out_dir: config.out.clone(),
         agg_mode: config.agg,
         trim: config.trim,
@@ -226,6 +230,13 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
         cap_fixed: config.cap_fixed,
     })?;
     crate::logging::info("Stage1 done");
+
+    crate::logging::info("Stage5 start: microenvironment extension");
+    let stage5 = Some(run_stage5(Stage5Config {
+        expr: config.expr.clone(),
+        out_dir: config.out.clone(),
+    })?);
+    crate::logging::info("Stage5 done");
 
     crate::logging::info("Stage2 start: score");
     let stage2 = run_stage2(Stage2Config {
@@ -275,6 +286,7 @@ pub fn run(config: RunConfig) -> Result<PipelineResult> {
         stage2: Some(stage2),
         stage3: Some(stage3),
         stage4,
+        stage5,
     };
 
     write_unified_root_summary(&result)?;
@@ -467,6 +479,13 @@ fn write_unified_root_summary(result: &PipelineResult) -> Result<()> {
         } else {
             out.insert("stage4".to_string(), Value::Null);
         }
+    }
+
+    if let Some(stage5) = &result.stage5 {
+        out.insert(
+            "microenvironment_extension".to_string(),
+            serde_json::to_value(stage5.summary.clone()).unwrap_or(Value::Null),
+        );
     }
 
     if let Value::Object(obj) = existing {
