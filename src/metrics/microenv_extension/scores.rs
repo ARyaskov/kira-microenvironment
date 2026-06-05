@@ -3,6 +3,7 @@ use crate::metrics::microenv_extension::panels::{
     MIN_PANEL_GENES, PANEL_TRIM_FRACTION, PanelKind, panel_specs,
 };
 use crate::select::{median_in_place, trimmed_mean_in_place};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeSet;
 
@@ -147,45 +148,76 @@ pub fn resolve_panels(expr: &ExprReader) -> ResolvedPanels {
 
 pub fn compute_microenv_scores(expr: &ExprReader, resolved: &ResolvedPanels) -> CellMicroenvScores {
     let n_cells = expr.n_cells();
-    let mut hyp_core = vec![f32::NAN; n_cells];
-    let mut nfkb_core = vec![f32::NAN; n_cells];
-    let mut ifn_core = vec![f32::NAN; n_cells];
-    let mut checkpoint_core = vec![f32::NAN; n_cells];
-    let mut adenosine_core = vec![f32::NAN; n_cells];
-    let mut stromal_core = vec![f32::NAN; n_cells];
 
-    let mut union_values = vec![0.0f32; resolved.n_union_slots];
-    let mut panel_buf = Vec::<f32>::new();
+    // Parallel per-cell computation. Each cell independently produces a 6-tuple
+    // (hyp, nfkb, ifn, checkpoint, adenosine, stromal). Per-thread scratch
+    // buffers (`union_values`, `panel_buf`) live in thread-locals to avoid
+    // re-allocation across cells handled by the same worker.
+    use std::cell::RefCell;
+    thread_local! {
+        static SCRATCH: RefCell<(Vec<f32>, Vec<f32>)> =
+            const { RefCell::new((Vec::new(), Vec::new())) };
+    }
 
-    for cell_idx in 0..n_cells {
-        union_values.fill(0.0);
-        for (gene_idx, value) in expr.iter_cell(cell_idx as u32) {
-            let slot = resolved.gene_to_slot[gene_idx as usize];
-            if slot >= 0 {
-                union_values[slot as usize] = value;
-            }
-        }
-
-        for panel in &resolved.panels {
-            let core = if panel.found_gene_count < MIN_PANEL_GENES {
-                f32::NAN
-            } else {
-                panel_buf.clear();
-                for &slot in &panel.slots {
-                    panel_buf.push(union_values[slot]);
+    let cores: Vec<[f32; 6]> = (0..n_cells)
+        .into_par_iter()
+        .map(|cell_idx| {
+            SCRATCH.with(|cell| {
+                let mut scratch = cell.borrow_mut();
+                let (union_values, panel_buf) = &mut *scratch;
+                if union_values.len() != resolved.n_union_slots {
+                    union_values.clear();
+                    union_values.resize(resolved.n_union_slots, 0.0);
+                } else {
+                    union_values.fill(0.0);
                 }
-                trimmed_mean_in_place(&mut panel_buf, PANEL_TRIM_FRACTION)
-            };
 
-            match panel.kind {
-                PanelKind::Hypoxia => hyp_core[cell_idx] = core,
-                PanelKind::Inflammation => nfkb_core[cell_idx] = core,
-                PanelKind::Interferon => ifn_core[cell_idx] = core,
-                PanelKind::Checkpoint => checkpoint_core[cell_idx] = core,
-                PanelKind::Adenosine => adenosine_core[cell_idx] = core,
-                PanelKind::Stromal => stromal_core[cell_idx] = core,
-            }
-        }
+                for (gene_idx, value) in expr.iter_cell(cell_idx as u32) {
+                    let slot = resolved.gene_to_slot[gene_idx as usize];
+                    if slot >= 0 {
+                        union_values[slot as usize] = value;
+                    }
+                }
+
+                let mut out = [f32::NAN; 6];
+                for panel in &resolved.panels {
+                    let core = if panel.found_gene_count < MIN_PANEL_GENES {
+                        f32::NAN
+                    } else {
+                        panel_buf.clear();
+                        for &slot in &panel.slots {
+                            panel_buf.push(union_values[slot]);
+                        }
+                        trimmed_mean_in_place(panel_buf, PANEL_TRIM_FRACTION)
+                    };
+                    let i = match panel.kind {
+                        PanelKind::Hypoxia => 0,
+                        PanelKind::Inflammation => 1,
+                        PanelKind::Interferon => 2,
+                        PanelKind::Checkpoint => 3,
+                        PanelKind::Adenosine => 4,
+                        PanelKind::Stromal => 5,
+                    };
+                    out[i] = core;
+                }
+                out
+            })
+        })
+        .collect();
+
+    let mut hyp_core = Vec::with_capacity(n_cells);
+    let mut nfkb_core = Vec::with_capacity(n_cells);
+    let mut ifn_core = Vec::with_capacity(n_cells);
+    let mut checkpoint_core = Vec::with_capacity(n_cells);
+    let mut adenosine_core = Vec::with_capacity(n_cells);
+    let mut stromal_core = Vec::with_capacity(n_cells);
+    for c in cores {
+        hyp_core.push(c[0]);
+        nfkb_core.push(c[1]);
+        ifn_core.push(c[2]);
+        checkpoint_core.push(c[3]);
+        adenosine_core.push(c[4]);
+        stromal_core.push(c[5]);
     }
 
     let hsi = robust_zscore(&hyp_core);
@@ -262,22 +294,23 @@ pub fn compute_microenv_scores(expr: &ExprReader, resolved: &ResolvedPanels) -> 
 }
 
 fn robust_zscore(raw: &[f32]) -> Vec<f32> {
-    let mut finite = raw
-        .iter()
-        .copied()
-        .filter(|x| x.is_finite())
-        .collect::<Vec<_>>();
-    if finite.is_empty() {
+    // Single-pass collection of finite values. We reuse the buffer for
+    // the MAD step by overwriting in place after computing the median.
+    let mut buf: Vec<f32> = Vec::with_capacity(raw.len());
+    for &x in raw {
+        if x.is_finite() {
+            buf.push(x);
+        }
+    }
+    if buf.is_empty() {
         return vec![f32::NAN; raw.len()];
     }
-    let median = median_in_place(&mut finite);
-    let mut abs_dev = raw
-        .iter()
-        .copied()
-        .filter(|x| x.is_finite())
-        .map(|x| (x - median).abs())
-        .collect::<Vec<_>>();
-    let mad = median_in_place(&mut abs_dev);
+    let median = median_in_place(&mut buf);
+    // Overwrite buf with |x - median| (same length as the finite count).
+    for v in buf.iter_mut() {
+        *v = (*v - median).abs();
+    }
+    let mad = median_in_place(&mut buf);
 
     let mut out = vec![f32::NAN; raw.len()];
     if mad == 0.0 {

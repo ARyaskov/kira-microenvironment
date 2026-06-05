@@ -1,17 +1,39 @@
+use std::io::IsTerminal;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn use_color() -> bool {
+    static COLOR: OnceLock<bool> = OnceLock::new();
+    *COLOR.get_or_init(|| {
+        // Honor NO_COLOR (https://no-color.org/) and CLICOLOR_FORCE.
+        if std::env::var_os("NO_COLOR").is_some() {
+            return false;
+        }
+        if std::env::var_os("CLICOLOR_FORCE").is_some_and(|v| v != "0") {
+            return true;
+        }
+        std::io::stdout().is_terminal()
+    })
+}
 
 pub fn info(message: impl AsRef<str>) {
     let ts = now_unix_millis();
     let human = format_rfc3339_utc(ts);
-    // ANSI green for INFO
-    println!("{human}  \x1b[32mINFO\x1b[0m {}", message.as_ref());
+    if use_color() {
+        println!("{human}  \x1b[32mINFO\x1b[0m {}", message.as_ref());
+    } else {
+        println!("{human}  INFO {}", message.as_ref());
+    }
 }
 
 pub fn warn(message: impl AsRef<str>) {
     let ts = now_unix_millis();
     let human = format_rfc3339_utc(ts);
-    // ANSI yellow for WARN
-    println!("{human}  \x1b[33mWARN\x1b[0m {}", message.as_ref());
+    if use_color() {
+        println!("{human}  \x1b[33mWARN\x1b[0m {}", message.as_ref());
+    } else {
+        println!("{human}  WARN {}", message.as_ref());
+    }
 }
 
 fn now_unix_millis() -> u128 {

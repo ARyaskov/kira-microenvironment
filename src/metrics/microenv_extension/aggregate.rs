@@ -1,5 +1,5 @@
 use crate::metrics::microenv_extension::scores::{CellMicroenvScores, PanelCoverage};
-use crate::select::{median_in_place, quantile_in_place};
+use crate::select::median_in_place;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -189,11 +189,13 @@ pub fn build_missingness(
 }
 
 fn quantiles_for(values: &[f32], idxs: &[usize]) -> MetricQuantiles {
-    let v = idxs
+    // Collect once, sort once. Three reads (median/p10/p90) from the sorted
+    // vector reuse the same allocation — replaces previous 3× clone + 3× sort.
+    let mut v: Vec<f32> = idxs
         .iter()
         .map(|&i| values[i])
         .filter(|x| x.is_finite())
-        .collect::<Vec<_>>();
+        .collect();
     if v.is_empty() {
         return MetricQuantiles {
             median: None,
@@ -201,13 +203,21 @@ fn quantiles_for(values: &[f32], idxs: &[usize]) -> MetricQuantiles {
             p90: None,
         };
     }
-
-    let mut v_median = v.clone();
-    let median = median_in_place(&mut v_median);
-    let mut v_p10 = v.clone();
-    let p10 = quantile_in_place(&mut v_p10, 0.10);
-    let mut v_p90 = v;
-    let p90 = quantile_in_place(&mut v_p90, 0.90);
+    v.sort_by(|a, b| a.total_cmp(b));
+    let n = v.len();
+    let median = if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        (v[n / 2 - 1] + v[n / 2]) * 0.5
+    };
+    let rank_p10 = ((0.10_f32 * n as f32).ceil() as usize)
+        .saturating_sub(1)
+        .min(n - 1);
+    let rank_p90 = ((0.90_f32 * n as f32).ceil() as usize)
+        .saturating_sub(1)
+        .min(n - 1);
+    let p10 = v[rank_p10];
+    let p90 = v[rank_p90];
     MetricQuantiles {
         median: Some(median),
         p10: Some(p10),

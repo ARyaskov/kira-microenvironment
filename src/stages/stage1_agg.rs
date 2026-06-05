@@ -7,7 +7,10 @@ use crate::io::input::read_tsv_input;
 use crate::io::mmap::MmapFile;
 use crate::io::tsv::TsvReader;
 use crate::select::{median_in_place, quantile_in_place, trimmed_mean_in_place};
+use ahash::AHashMap;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -154,11 +157,12 @@ pub fn run_stage1(cfg: Stage1Config) -> Result<Stage1Result> {
         }
     }
 
-    let mut group_to_cells: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    // Hash maps: explicit per-group sort happens at output, so determinism holds.
+    let mut group_to_cells: AHashMap<&str, Vec<u32>> = AHashMap::new();
     for row in &groups_rows {
         if let Some(idx) = cell_to_index.get(&row.cell_id) {
             group_to_cells
-                .entry(row.group.clone())
+                .entry(row.group.as_str())
                 .or_default()
                 .push(*idx as u32);
         }
@@ -170,72 +174,103 @@ pub fn run_stage1(cfg: Stage1Config) -> Result<Stage1Result> {
     let n_groups = groups_sorted.len();
     let n_genes = genes.len();
     let matrix_len = n_groups.saturating_mul(n_genes);
-    let mut expr_matrix = vec![0.0f32; matrix_len];
-    let mut cov_matrix = vec![0.0f32; matrix_len];
 
-    let mut buffers: Vec<Vec<f32>> = (0..n_genes).map(|_| Vec::new()).collect();
-    let mut positive_counts = vec![0usize; n_genes];
     crate::logging::info(format!(
         "Stage1: aggregating {} groups x {} genes",
         n_groups, n_genes
     ));
 
-    for (group_idx, group_name) in groups_sorted.iter().enumerate() {
-        let empty: Vec<u32> = Vec::new();
-        let cells = group_to_cells.get(group_name).unwrap_or(&empty);
-        let n_cells = *group_sizes.get(group_name).unwrap_or(&cells.len());
+    // Per-thread scratch buffers (one `Vec<f32>` per gene + one positive-count
+    // vector). Re-created lazily inside each thread to keep allocations
+    // amortized across groups handled by the same worker.
+    thread_local! {
+        static SCRATCH: RefCell<(Vec<Vec<f32>>, Vec<usize>)> =
+            const { RefCell::new((Vec::new(), Vec::new())) };
+    }
 
-        for values in &mut buffers {
-            values.clear();
-        }
-        positive_counts.fill(0);
+    // Parallel scan over groups. Each group is independent and writes to its
+    // own contiguous row of the output matrices.
+    let rows: Vec<(Vec<f32>, Vec<f32>)> = groups_sorted
+        .par_iter()
+        .map(|group_name| {
+            let empty: Vec<u32> = Vec::new();
+            let cells = group_to_cells.get(group_name.as_str()).unwrap_or(&empty);
+            let n_cells_g = *group_sizes.get(group_name).unwrap_or(&cells.len());
 
-        for &cell_idx in cells {
-            for (gene_idx, value) in reader.iter_cell(cell_idx) {
-                let gi = gene_idx as usize;
-                if gi >= needed_lookup.len() {
-                    continue;
+            SCRATCH.with(|cell| {
+                let mut scratch = cell.borrow_mut();
+                let (buffers, positive_counts) = &mut *scratch;
+                if buffers.len() != n_genes {
+                    buffers.clear();
+                    buffers.resize_with(n_genes, Vec::new);
                 }
-                let local = needed_lookup[gi];
-                if local < 0 {
-                    continue;
+                if positive_counts.len() != n_genes {
+                    positive_counts.clear();
+                    positive_counts.resize(n_genes, 0);
                 }
-                let local_idx = local as usize;
-                buffers[local_idx].push(value);
-                if value > cfg.eps {
-                    positive_counts[local_idx] += 1;
+                for values in buffers.iter_mut() {
+                    values.clear();
                 }
-            }
-        }
+                positive_counts.fill(0);
 
-        for local_idx in 0..n_genes {
-            let idx = group_idx * n_genes + local_idx;
-            let gene = &genes[local_idx];
-            if gene.found_expr_idx.is_none() || n_cells == 0 {
-                expr_matrix[idx] = 0.0;
-                cov_matrix[idx] = 0.0;
-                continue;
-            }
+                for &cell_idx in cells {
+                    for (gene_idx, value) in reader.iter_cell(cell_idx) {
+                        let gi = gene_idx as usize;
+                        if gi >= needed_lookup.len() {
+                            continue;
+                        }
+                        let local = needed_lookup[gi];
+                        if local < 0 {
+                            continue;
+                        }
+                        let local_idx = local as usize;
+                        buffers[local_idx].push(value);
+                        if value > cfg.eps {
+                            positive_counts[local_idx] += 1;
+                        }
+                    }
+                }
 
-            if buffers[local_idx].len() < n_cells {
-                buffers[local_idx].resize(n_cells, 0.0);
-            } else if buffers[local_idx].len() > n_cells {
-                buffers[local_idx].truncate(n_cells);
-            }
+                let mut row_expr = vec![0.0f32; n_genes];
+                let mut row_cov = vec![0.0f32; n_genes];
+                for local_idx in 0..n_genes {
+                    let gene = &genes[local_idx];
+                    if gene.found_expr_idx.is_none() || n_cells_g == 0 {
+                        continue;
+                    }
+                    let buf = &mut buffers[local_idx];
+                    if buf.len() < n_cells_g {
+                        buf.resize(n_cells_g, 0.0);
+                    } else if buf.len() > n_cells_g {
+                        buf.truncate(n_cells_g);
+                    }
 
-            let expr = match cfg.agg_mode {
-                AggModeArg::Median => median_in_place(&mut buffers[local_idx]),
-                AggModeArg::TrimmedMean => trimmed_mean_in_place(&mut buffers[local_idx], cfg.trim),
-            };
-            let cov = (positive_counts[local_idx] as f32) / (n_cells as f32);
-            expr_matrix[idx] = expr;
-            cov_matrix[idx] = cov;
-        }
+                    let expr = match cfg.agg_mode {
+                        AggModeArg::Median => median_in_place(buf),
+                        AggModeArg::TrimmedMean => trimmed_mean_in_place(buf, cfg.trim),
+                    };
+                    row_expr[local_idx] = expr;
+                    row_cov[local_idx] = (positive_counts[local_idx] as f32) / (n_cells_g as f32);
+                }
+                (row_expr, row_cov)
+            })
+        })
+        .collect();
+
+    // Stitch per-group rows into row-major matrices.
+    let mut expr_matrix = Vec::with_capacity(matrix_len);
+    let mut cov_matrix = Vec::with_capacity(matrix_len);
+    for (row_expr, row_cov) in rows {
+        expr_matrix.extend_from_slice(&row_expr);
+        cov_matrix.extend_from_slice(&row_cov);
     }
 
     let cap_value = match cfg.cap_mode {
         CapModeArg::Fixed => cfg.cap_fixed.unwrap_or(0.0),
         CapModeArg::P99 => {
+            // O(n) quantile via select_nth_unstable. We still clone because we
+            // must not perturb the matrix used downstream — but allocate just
+            // one buffer (was: a full clone + a full sort).
             let mut values = expr_matrix.clone();
             quantile_in_place(&mut values, cfg.cap_p)
         }
@@ -376,9 +411,9 @@ fn parse_barcodes(path: &Path) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn load_barcodes_index(path: &Path, n_cells: usize) -> Result<BTreeMap<String, usize>> {
+fn load_barcodes_index(path: &Path, n_cells: usize) -> Result<AHashMap<String, usize>> {
     let barcodes = parse_barcodes(path)?;
-    let mut map = BTreeMap::new();
+    let mut map = AHashMap::with_capacity(n_cells.min(barcodes.len()));
     for (idx, cell_id) in barcodes.into_iter().enumerate() {
         if idx >= n_cells {
             break;

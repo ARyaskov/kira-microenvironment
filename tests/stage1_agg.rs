@@ -30,12 +30,14 @@ fn stage1_agg_outputs_and_cache_are_deterministic() {
     )
     .expect("genes_requested");
 
+    // Use serde_json to handle path escaping correctly on Windows (backslashes
+    // would otherwise produce invalid JSON escape sequences).
+    let resolved = serde_json::json!({
+        "inputs": [{"kind": "barcodes", "path_abs": barcodes_path.to_string_lossy()}]
+    });
     fs::write(
         s0.join("resolved.json"),
-        format!(
-            "{{\n  \"inputs\": [{{\"kind\": \"barcodes\", \"path_abs\": \"{}\"}}]\n}}\n",
-            barcodes_path.to_string_lossy()
-        ),
+        serde_json::to_string(&resolved).expect("serialize resolved"),
     )
     .expect("resolved");
 

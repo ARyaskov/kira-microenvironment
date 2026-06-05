@@ -5,12 +5,38 @@ use std::path::Path;
 const CACHE_MAGIC: [u8; 8] = *b"KIRAEAGG";
 const CACHE_VERSION: u32 = 1;
 
+/// Reader for KIRAEAGG v1 (`stage1_agg/cache.bin`).
+///
+/// Holds the mmap alive and exposes the `expr`/`cov` matrices either as
+/// borrowed slices of f32 (when alignment permits) or as owned Vec<f32>
+/// (fallback). Lookups are O(1) by direct slice indexing.
 pub struct AggReader {
-    _mmap: MmapFile,
+    // Field drop order matters: storages may borrow from `_mmap`, so the mmap
+    // MUST be dropped last. In Rust, fields drop in declaration order, so keep
+    // `_mmap` at the bottom.
     groups: Vec<String>,
     genes: Vec<String>,
-    expr: Vec<f32>,
-    cov: Vec<f32>,
+    expr_storage: MatrixStorage,
+    cov_storage: MatrixStorage,
+    n_genes: usize,
+    _mmap: MmapFile,
+}
+
+enum MatrixStorage {
+    /// Slice into the mmap (zero-copy fast path).
+    Borrowed(&'static [f32]),
+    /// Owned copy (fallback when alignment doesn't match f32).
+    Owned(Vec<f32>),
+}
+
+impl MatrixStorage {
+    #[inline]
+    fn as_slice(&self) -> &[f32] {
+        match self {
+            Self::Borrowed(s) => s,
+            Self::Owned(v) => v.as_slice(),
+        }
+    }
 }
 
 impl AggReader {
@@ -84,35 +110,34 @@ impl AggReader {
             .checked_mul(n_genes)
             .ok_or_else(|| KiraError::new(ErrorKind::TsvParse, "cache matrix size overflow"))?;
 
-        let expr_bytes = n
+        let bytes = n
             .checked_mul(4)
             .ok_or_else(|| KiraError::new(ErrorKind::TsvParse, "cache expr bytes overflow"))?;
-        let cov_bytes = expr_bytes;
-        if pos + expr_bytes + cov_bytes > data.len() {
+        if pos + bytes * 2 > data.len() {
             return Err(KiraError::new(
                 ErrorKind::TsvParse,
                 "cache matrix arrays out of bounds",
             ));
         }
 
-        let mut expr = Vec::with_capacity(n);
-        for _ in 0..n {
-            expr.push(read_f32(data, pos)?);
-            pos += 4;
-        }
+        let expr_bytes = &data[pos..pos + bytes];
+        let cov_bytes = &data[pos + bytes..pos + bytes * 2];
 
-        let mut cov = Vec::with_capacity(n);
-        for _ in 0..n {
-            cov.push(read_f32(data, pos)?);
-            pos += 4;
-        }
+        // SAFETY: We extend the slice lifetime to 'static; this is sound only
+        // because `_mmap` is stored in the same struct and is never dropped
+        // before the slices are dropped (struct field drop order: declaration order).
+        // Note: declaration order matters — `_mmap` is below the storages, so
+        // they are dropped first. To be safe we keep `_mmap` LAST in field order.
+        let expr_storage = make_storage(expr_bytes, n)?;
+        let cov_storage = make_storage(cov_bytes, n)?;
 
         Ok(Self {
-            _mmap: mmap,
             groups,
             genes,
-            expr,
-            cov,
+            expr_storage,
+            cov_storage,
+            n_genes,
+            _mmap: mmap,
         })
     }
 
@@ -121,7 +146,7 @@ impl AggReader {
     }
 
     pub fn n_genes(&self) -> usize {
-        self.genes.len()
+        self.n_genes
     }
 
     pub fn groups(&self) -> &[String] {
@@ -132,24 +157,44 @@ impl AggReader {
         &self.genes
     }
 
+    #[inline]
     pub fn expr(&self, group_idx: usize, gene_idx: usize) -> f32 {
-        let idx = group_idx
-            .checked_mul(self.n_genes())
-            .and_then(|x| x.checked_add(gene_idx));
-        match idx {
-            Some(i) if i < self.expr.len() => self.expr[i],
-            _ => 0.0,
+        let s = self.expr_storage.as_slice();
+        let n = self.n_genes;
+        if gene_idx >= n {
+            return 0.0;
         }
+        let idx = group_idx * n + gene_idx;
+        if idx < s.len() { s[idx] } else { 0.0 }
     }
 
+    #[inline]
     pub fn cov(&self, group_idx: usize, gene_idx: usize) -> f32 {
-        let idx = group_idx
-            .checked_mul(self.n_genes())
-            .and_then(|x| x.checked_add(gene_idx));
-        match idx {
-            Some(i) if i < self.cov.len() => self.cov[i],
-            _ => 0.0,
+        let s = self.cov_storage.as_slice();
+        let n = self.n_genes;
+        if gene_idx >= n {
+            return 0.0;
         }
+        let idx = group_idx * n + gene_idx;
+        if idx < s.len() { s[idx] } else { 0.0 }
+    }
+}
+
+fn make_storage(bytes: &[u8], n: usize) -> Result<MatrixStorage> {
+    debug_assert_eq!(bytes.len(), n * 4);
+    // Fast path: if mmap is f32-aligned, reinterpret directly.
+    if bytes.as_ptr() as usize % std::mem::align_of::<f32>() == 0 {
+        let slice: &[f32] = bytemuck::cast_slice(bytes);
+        // SAFETY: see AggReader::open — `_mmap` outlives this slice via field order.
+        let extended: &'static [f32] = unsafe { std::mem::transmute(slice) };
+        Ok(MatrixStorage::Borrowed(extended))
+    } else {
+        // Fallback path: allocate and bulk-copy via from_le_bytes per chunk.
+        let mut out = Vec::with_capacity(n);
+        for chunk in bytes.chunks_exact(4) {
+            out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        }
+        Ok(MatrixStorage::Owned(out))
     }
 }
 
@@ -162,15 +207,4 @@ fn read_u32(data: &[u8], offset: usize) -> Result<u32> {
         ));
     }
     Ok(u32::from_le_bytes(data[offset..end].try_into().unwrap()))
-}
-
-fn read_f32(data: &[u8], offset: usize) -> Result<f32> {
-    let end = offset + 4;
-    if end > data.len() {
-        return Err(KiraError::new(
-            ErrorKind::TsvParse,
-            "read_f32 out of bounds",
-        ));
-    }
-    Ok(f32::from_le_bytes(data[offset..end].try_into().unwrap()))
 }

@@ -1,8 +1,11 @@
 use crate::error::{ErrorKind, KiraError, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
+
+const SHA256_CHUNK: usize = 1 << 20; // 1 MiB
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PathMeta {
@@ -86,19 +89,35 @@ pub fn metadata_for_path(kind: impl Into<String>, path: &Path) -> Result<PathMet
 }
 
 fn sha256_8(path: &Path) -> Result<String> {
-    let data = if path.is_file() {
-        fs::read(path).map_err(|e| {
+    let mut hasher = Sha256::new();
+    if path.is_file() {
+        let file = fs::File::open(path).map_err(|e| {
             KiraError::new(
                 ErrorKind::Path,
-                format!("read failed {}: {e}", path.display()),
+                format!("open failed {}: {e}", path.display()),
             )
-        })?
-    } else {
-        Vec::new()
-    };
-    let mut hasher = Sha256::new();
-    hasher.update(&data);
+        })?;
+        let mut reader = BufReader::with_capacity(SHA256_CHUNK, file);
+        let mut buf = vec![0u8; SHA256_CHUNK];
+        loop {
+            let n = reader.read(&mut buf).map_err(|e| {
+                KiraError::new(
+                    ErrorKind::Path,
+                    format!("read failed {}: {e}", path.display()),
+                )
+            })?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+    }
     let out = hasher.finalize();
-    let hex = format!("{:x}", out);
-    Ok(hex.chars().take(8).collect())
+    // Take the first 8 hex characters (4 bytes) without allocating the full hex string.
+    let mut hex = String::with_capacity(8);
+    use std::fmt::Write;
+    for byte in &out[..4] {
+        let _ = write!(hex, "{:02x}", byte);
+    }
+    Ok(hex)
 }

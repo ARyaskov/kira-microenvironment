@@ -5,18 +5,19 @@ use crate::expr::format::{
 use crate::io::input::read_tsv_input;
 use crate::io::mmap::MmapFile;
 use crate::io::tsv::TsvReader;
-use std::collections::BTreeMap;
+use ahash::AHashMap;
 use std::path::Path;
 
 pub struct ExprReader {
-    _mmap: MmapFile,
     n_cells: u32,
     n_genes: u32,
     gene_symbols: Vec<String>,
-    gene_lookup: BTreeMap<String, u32>,
+    gene_lookup: AHashMap<String, u32>,
     cell_offsets: Vec<u64>,
     gene_idx: Vec<u32>,
     values: Vec<f32>,
+    // Drop last (declaration order). Kept to extend mmap lifetime.
+    _mmap: MmapFile,
 }
 
 fn normalize_gene_key(raw: &str) -> String {
@@ -29,7 +30,7 @@ fn normalize_gene_key(raw: &str) -> String {
     no_version.to_ascii_uppercase()
 }
 
-fn add_gene_lookup_key(lookup: &mut BTreeMap<String, u32>, key: &str, idx: u32) {
+fn add_gene_lookup_key(lookup: &mut AHashMap<String, u32>, key: &str, idx: u32) {
     lookup.entry(key.to_string()).or_insert(idx);
     let normalized = normalize_gene_key(key);
     lookup.entry(normalized).or_insert(idx);
@@ -123,13 +124,19 @@ impl ExprReader {
             ));
         }
 
-        let mut cell_offsets = Vec::with_capacity(n_cells as usize + 1);
-        let mut idx_pos = cell_index_offset;
-        for _ in 0..=n_cells {
-            let off = read_u64(data, idx_pos)?;
-            cell_offsets.push(off);
-            idx_pos += 8;
-        }
+        let cell_offsets_bytes = &data[cell_index_offset..cell_index_offset + (n_cells as usize + 1) * 8];
+        let cell_offsets: Vec<u64> = if cell_offsets_bytes.as_ptr() as usize
+            % std::mem::align_of::<u64>()
+            == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, u64>(cell_offsets_bytes).to_vec()
+        } else {
+            cell_offsets_bytes
+                .chunks_exact(8)
+                .map(|c| u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                .collect()
+        };
 
         let nnz = *cell_offsets.last().unwrap_or(&0) as usize;
         if !cell_offsets.windows(2).all(|w| w[0] <= w[1]) {
@@ -153,34 +160,47 @@ impl ExprReader {
             ));
         }
 
-        let mut gene_idx = Vec::with_capacity(nnz);
-        let mut p = nnz_offset;
-        for _ in 0..nnz {
-            let g = read_u32(data, p)?;
+        // Bulk-decode nnz arrays. Use bytemuck if aligned, else chunked from_le_bytes.
+        let gene_idx_bytes = &data[nnz_offset..nnz_offset + nnz * 4];
+        let value_bytes = &data[nnz_offset + nnz * 4..nnz_offset + nnz * 8];
+
+        let gene_idx: Vec<u32> = if gene_idx_bytes.as_ptr() as usize % std::mem::align_of::<u32>()
+            == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, u32>(gene_idx_bytes).to_vec()
+        } else {
+            gene_idx_bytes
+                .chunks_exact(4)
+                .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        };
+        for &g in &gene_idx {
             if g >= n_genes {
                 return Err(KiraError::new(
                     ErrorKind::TsvParse,
                     format!("gene_idx out of range in {}", path.display()),
                 ));
             }
-            gene_idx.push(g);
-            p += 4;
         }
 
-        let mut values = Vec::with_capacity(nnz);
-        for _ in 0..nnz {
-            let v = read_f32(data, p)?;
-            values.push(v);
-            p += 4;
-        }
+        let values: Vec<f32> = if value_bytes.as_ptr() as usize % std::mem::align_of::<f32>() == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, f32>(value_bytes).to_vec()
+        } else {
+            value_bytes
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        };
 
-        let mut gene_lookup = BTreeMap::new();
+        let mut gene_lookup = AHashMap::new();
         for (idx, symbol) in gene_symbols.iter().enumerate() {
             add_gene_lookup_key(&mut gene_lookup, symbol, idx as u32);
         }
 
         Ok(Self {
-            _mmap: mmap,
             n_cells,
             n_genes,
             gene_symbols,
@@ -188,6 +208,7 @@ impl ExprReader {
             cell_offsets,
             gene_idx,
             values,
+            _mmap: mmap,
         })
     }
 
@@ -258,12 +279,25 @@ impl ExprReader {
             ));
         }
 
-        let mut gene_ptr = Vec::with_capacity(gene_ptr_len);
-        let mut pos = HEADER_LEN;
-        for _ in 0..gene_ptr_len {
-            gene_ptr.push(read_u64(data, pos)? as usize);
-            pos += 8;
-        }
+        let gene_ptr_section = &data[HEADER_LEN..HEADER_LEN + gene_ptr_bytes];
+        let pos = HEADER_LEN + gene_ptr_bytes;
+        let gene_ptr: Vec<usize> = if gene_ptr_section.as_ptr() as usize
+            % std::mem::align_of::<u64>()
+            == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, u64>(gene_ptr_section)
+                .iter()
+                .map(|&v| v as usize)
+                .collect()
+        } else {
+            gene_ptr_section
+                .chunks_exact(8)
+                .map(|c| {
+                    u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]) as usize
+                })
+                .collect()
+        };
         if !gene_ptr.windows(2).all(|w| w[0] <= w[1]) {
             return Err(KiraError::new(
                 ErrorKind::TsvParse,
@@ -277,24 +311,44 @@ impl ExprReader {
             ));
         }
 
-        let mut cell_idx = Vec::with_capacity(nnz);
-        for _ in 0..nnz {
-            let c = read_u32(data, pos)?;
-            if c as usize >= n_cells {
+        let cell_idx_bytes = &data[pos..pos + nnz * 4];
+        let value_bytes = &data[pos + nnz * 4..pos + nnz * 8];
+
+        let cell_idx: Vec<usize> = if cell_idx_bytes.as_ptr() as usize
+            % std::mem::align_of::<u32>()
+            == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, u32>(cell_idx_bytes)
+                .iter()
+                .map(|&v| v as usize)
+                .collect()
+        } else {
+            cell_idx_bytes
+                .chunks_exact(4)
+                .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize)
+                .collect()
+        };
+        for &c in &cell_idx {
+            if c >= n_cells {
                 return Err(KiraError::new(
                     ErrorKind::TsvParse,
                     format!("cell_idx out of range in {}", path.display()),
                 ));
             }
-            cell_idx.push(c as usize);
-            pos += 4;
         }
 
-        let mut src_values = Vec::with_capacity(nnz);
-        for _ in 0..nnz {
-            src_values.push(read_f32(data, pos)?);
-            pos += 4;
-        }
+        let src_values: Vec<f32> = if value_bytes.as_ptr() as usize % std::mem::align_of::<f32>()
+            == 0
+            && cfg!(target_endian = "little")
+        {
+            bytemuck::cast_slice::<u8, f32>(value_bytes).to_vec()
+        } else {
+            value_bytes
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        };
 
         let mut per_cell_counts = vec![0usize; n_cells];
         for &c in &cell_idx {
@@ -337,13 +391,12 @@ impl ExprReader {
         }
 
         let gene_symbols = load_gene_symbols_for_kiramtx(path, n_genes)?;
-        let mut gene_lookup = BTreeMap::new();
+        let mut gene_lookup = AHashMap::new();
         for (idx, symbol) in gene_symbols.iter().enumerate() {
             add_gene_lookup_key(&mut gene_lookup, symbol, idx as u32);
         }
 
         Ok(Self {
-            _mmap: mmap,
             n_cells: n_cells as u32,
             n_genes: n_genes as u32,
             gene_symbols,
@@ -351,6 +404,7 @@ impl ExprReader {
             cell_offsets,
             gene_idx,
             values,
+            _mmap: mmap,
         })
     }
 
@@ -411,7 +465,7 @@ impl ExprReader {
         }
 
         let symbols = load_gene_symbols_for_kiramtx(path, n_genes as usize)?;
-        let mut gene_lookup = BTreeMap::new();
+        let mut gene_lookup = AHashMap::new();
         for (idx, symbol) in symbols.iter().enumerate() {
             add_gene_lookup_key(&mut gene_lookup, symbol, idx as u32);
         }
@@ -443,7 +497,6 @@ impl ExprReader {
         }
 
         Ok(Self {
-            _mmap: mmap,
             n_cells,
             n_genes,
             gene_symbols: symbols,
@@ -451,6 +504,7 @@ impl ExprReader {
             cell_offsets,
             gene_idx,
             values,
+            _mmap: mmap,
         })
     }
 

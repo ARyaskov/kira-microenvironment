@@ -21,12 +21,14 @@ fn stage5_microenv_outputs_are_deterministic() {
         "cell_id\tgroup\nC1\tA\nC2\tA\nC3\tB\nC4\tB\n",
     )
     .expect("groups");
+    // Use serde_json to handle path escaping correctly on Windows (backslashes
+    // would otherwise produce invalid JSON escape sequences).
+    let resolved = serde_json::json!({
+        "inputs": [{"kind": "barcodes", "path_abs": barcodes.to_string_lossy()}]
+    });
     fs::write(
         s0.join("resolved.json"),
-        format!(
-            "{{\"inputs\":[{{\"kind\":\"barcodes\",\"path_abs\":\"{}\"}}]}}\n",
-            barcodes.to_string_lossy()
-        ),
+        serde_json::to_string(&resolved).expect("serialize resolved"),
     )
     .expect("resolved");
 

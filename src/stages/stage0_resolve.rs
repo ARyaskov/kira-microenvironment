@@ -111,9 +111,12 @@ pub fn run_stage0(cfg: Stage0Config) -> Result<Stage0Result> {
 
     let group_sizes = compute_group_sizes(&groups_rows);
     let n_groups = group_sizes.len();
+    // O(N + M) using a set of grouped cell_ids instead of O(N*M) nested scan.
+    let grouped_cell_ids: BTreeSet<&str> =
+        groups_rows.iter().map(|r| r.cell_id.as_str()).collect();
     let missing_in_groups = barcodes_set
         .iter()
-        .filter(|cell_id| !groups_rows.iter().any(|r| &r.cell_id == *cell_id))
+        .filter(|cell_id| !grouped_cell_ids.contains(cell_id.as_str()))
         .count();
     if missing_in_groups > 0 {
         warnings.push(format!(

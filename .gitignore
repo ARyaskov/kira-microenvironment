@@ -18,3 +18,6 @@ target/
 .idea/
 out/
 data/
+generated/
+.claude/
+.cursor/

@@ -5,9 +5,13 @@ use crate::io::format::fmt_f32;
 use crate::io::mmap::MmapFile;
 use crate::io::tsv::TsvReader;
 use crate::resources::resolve_lr_path;
+use ahash::AHashMap;
+use rayon::prelude::*;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 const COV_WARN: f32 = 0.20;
 
@@ -120,12 +124,15 @@ struct ResolvedPair {
     receptor_entity: Entity,
 }
 
+/// Compact edge representation. String names live in shared `Vec<String>`
+/// pools; the edge carries only indices and floats (≤ 40 bytes vs the 200+
+/// bytes of the old String-heavy struct). The `flags` field is short and
+/// retained as a String because labels are dynamic.
 #[derive(Debug, Clone)]
 struct Edge {
-    source_group: String,
-    target_group: String,
-    ligand: String,
-    receptor: String,
+    source_idx: u32,
+    target_idx: u32,
+    pair_idx: u32,
     score: f32,
     l_expr: f32,
     r_expr: f32,
@@ -185,20 +192,20 @@ pub fn run_stage2(cfg: Stage2Config) -> Result<Stage2Result> {
         labels.len()
     ));
 
-    let mut group_names = agg.groups().to_vec();
-    group_names.sort();
-    let group_idx_by_name: BTreeMap<String, usize> = agg
-        .groups()
-        .iter()
-        .enumerate()
-        .map(|(i, g)| (g.clone(), i))
-        .collect();
+    // Build sorted group ordering (by name) but keep agg-internal indices
+    // for fast lookups. `groups_sorted[i]` is the i-th group in name order;
+    // `group_agg_idx[i]` is its index into the AggReader cache.
+    let agg_groups = agg.groups();
+    let mut order: Vec<usize> = (0..agg_groups.len()).collect();
+    order.sort_by(|&a, &b| agg_groups[a].cmp(&agg_groups[b]));
+    let groups_sorted: Vec<String> = order.iter().map(|&i| agg_groups[i].clone()).collect();
+    let group_agg_idx: Vec<usize> = order;
 
-    let gene_idx_by_name: BTreeMap<String, usize> = agg
+    let gene_idx_by_name: AHashMap<&str, usize> = agg
         .genes()
         .iter()
         .enumerate()
-        .map(|(i, g)| (g.clone(), i))
+        .map(|(i, g)| (g.as_str(), i))
         .collect();
 
     let complex_map = build_complex_map(&cofactors);
@@ -257,133 +264,172 @@ pub fn run_stage2(cfg: Stage2Config) -> Result<Stage2Result> {
     ));
 
     let n_pairs_expanded = resolved_pairs.len();
+    let n_groups = groups_sorted.len();
 
-    let mut edges_before_filter = 0usize;
-    let mut filtered_edges = Vec::new();
+    // Parallel scan over LR pairs. Each pair is independent: its bucket keys
+    // are `(pair_idx, src_idx)` which are unique to that pair, so we can merge
+    // the per-pair AHashMaps without conflict. `edges_before_filter` is an
+    // exact counter and accumulates atomically.
+    let edges_before_filter_atomic = AtomicUsize::new(0);
 
-    for rp in &resolved_pairs {
-        for src in &group_names {
-            let src_idx = *group_idx_by_name.get(src).unwrap_or(&0);
-            let (l_expr, cov_l, mean_l) = eval_entity(&rp.ligand_entity, src_idx, &agg);
+    let per_pair_buckets: Vec<Vec<(u64, TopK)>> = resolved_pairs
+        .par_iter()
+        .enumerate()
+        .map(|(pair_idx, rp)| {
+            // Hoist per-source ligand and per-target receptor evaluations.
+            let l_data: Vec<(f32, f32, f32)> = group_agg_idx
+                .iter()
+                .map(|&aix| eval_entity(&rp.ligand_entity, aix, &agg))
+                .collect();
+            let r_data: Vec<(f32, f32, f32)> = group_agg_idx
+                .iter()
+                .map(|&aix| eval_entity(&rp.receptor_entity, aix, &agg))
+                .collect();
 
-            for tgt in &group_names {
-                let tgt_idx = *group_idx_by_name.get(tgt).unwrap_or(&0);
-                let (r_expr, cov_r, mean_r) = eval_entity(&rp.receptor_entity, tgt_idx, &agg);
+            let mut local_buckets: AHashMap<u64, TopK> = AHashMap::new();
+            let mut local_before: usize = 0;
 
-                edges_before_filter += 1;
-
-                if cov_l < cfg.cov_min
-                    || cov_r < cfg.cov_min
-                    || l_expr < cfg.expr_min
-                    || r_expr < cfg.expr_min
-                {
+            for src in 0..n_groups {
+                let (l_expr, cov_l, mean_l) = l_data[src];
+                if cov_l < cfg.cov_min || l_expr < cfg.expr_min {
+                    local_before += n_groups;
                     continue;
                 }
 
-                let fl = clamp_expr(l_expr, cap_used);
-                let fr = clamp_expr(r_expr, cap_used);
-                let score0 = fl * fr * rp.weight_pair * rp.weight_labels;
+                for tgt in 0..n_groups {
+                    let (r_expr, cov_r, mean_r) = r_data[tgt];
+                    local_before += 1;
 
-                let (spec_l, spec_r, spec_boost) = if cfg.spec_on {
-                    let sl = clamp_ratio(l_expr, mean_l, cfg.eps, cfg.spec_cap);
-                    let sr = clamp_ratio(r_expr, mean_r, cfg.eps, cfg.spec_cap);
-                    (sl, sr, (sl * sr).sqrt())
-                } else {
-                    (1.0, 1.0, 1.0)
-                };
+                    if cov_r < cfg.cov_min || r_expr < cfg.expr_min {
+                        continue;
+                    }
 
-                let final_score = score0 * spec_boost;
+                    let fl = clamp_expr(l_expr, cap_used);
+                    let fr = clamp_expr(r_expr, cap_used);
+                    let score0 = fl * fr * rp.weight_pair * rp.weight_labels;
 
-                let mut flags = Vec::new();
-                if cov_l.min(cov_r) < COV_WARN {
-                    flags.push("LOW_COVERAGE_EDGE".to_string());
+                    let (spec_l, spec_r, spec_boost) = if cfg.spec_on {
+                        let sl = clamp_ratio(l_expr, mean_l, cfg.eps, cfg.spec_cap);
+                        let sr = clamp_ratio(r_expr, mean_r, cfg.eps, cfg.spec_cap);
+                        (sl, sr, (sl * sr).sqrt())
+                    } else {
+                        (1.0, 1.0, 1.0)
+                    };
+
+                    let final_score = score0 * spec_boost;
+
+                    let flags_str = build_flags_string(
+                        cov_l,
+                        cov_r,
+                        cfg.spec_on,
+                        spec_boost,
+                        &rp.label_flags,
+                    );
+
+                    let edge = Edge {
+                        source_idx: src as u32,
+                        target_idx: tgt as u32,
+                        pair_idx: pair_idx as u32,
+                        score: final_score,
+                        l_expr,
+                        r_expr,
+                        cov_l,
+                        cov_r,
+                        spec_l,
+                        spec_r,
+                        flags: flags_str,
+                    };
+
+                    let key = pack_u32_pair(pair_idx as u32, src as u32);
+                    let topk = local_buckets
+                        .entry(key)
+                        .or_insert_with(|| TopK::new(cfg.top_n_per_pair));
+                    topk.push(edge);
                 }
-                if cfg.spec_on && spec_boost >= 3.0 {
-                    flags.push("HIGH_SPECIFICITY".to_string());
-                }
-                flags.extend(rp.label_flags.iter().cloned());
-                flags.sort();
-                flags.dedup();
-
-                filtered_edges.push(Edge {
-                    source_group: src.clone(),
-                    target_group: tgt.clone(),
-                    ligand: rp.ligand.clone(),
-                    receptor: rp.receptor.clone(),
-                    score: final_score,
-                    l_expr,
-                    r_expr,
-                    cov_l,
-                    cov_r,
-                    spec_l,
-                    spec_r,
-                    flags: flags.join(","),
-                });
             }
+
+            edges_before_filter_atomic.fetch_add(local_before, AtomicOrdering::Relaxed);
+            local_buckets.into_iter().collect()
+        })
+        .collect();
+
+    let mut by_pair_source: AHashMap<u64, TopK> =
+        AHashMap::with_capacity(per_pair_buckets.iter().map(|v| v.len()).sum());
+    for bucket_list in per_pair_buckets {
+        for (k, v) in bucket_list {
+            // Per-pair keys are disjoint across pairs (pair_idx is in the key),
+            // so insert is unconditional and never collides.
+            by_pair_source.insert(k, v);
         }
     }
+    let edges_before_filter = edges_before_filter_atomic.load(AtomicOrdering::Relaxed);
 
-    // Step 1 limit: per (ligand, receptor, source_group)
-    let mut by_pair_source: BTreeMap<(String, String, String), Vec<Edge>> = BTreeMap::new();
-    for edge in filtered_edges {
-        by_pair_source
-            .entry((
-                edge.ligand.clone(),
-                edge.receptor.clone(),
-                edge.source_group.clone(),
+    // Drain (pair, source) buckets, sort each by score-desc with tie-break by
+    // target name; then group by source_idx and apply top_n_per_source.
+    let mut by_source: AHashMap<u32, TopK> = AHashMap::new();
+    let target_cmp = |a: &Edge, b: &Edge| {
+        b.score
+            .total_cmp(&a.score)
+            .then_with(|| groups_sorted[a.target_idx as usize].cmp(
+                &groups_sorted[b.target_idx as usize],
             ))
-            .or_default()
-            .push(edge);
-    }
-
-    let mut after_pair_limit = Vec::new();
-    for (_, mut edges) in by_pair_source {
-        edges.sort_by(|a, b| {
-            b.score
-                .total_cmp(&a.score)
-                .then(a.target_group.cmp(&b.target_group))
-        });
-        if edges.len() > cfg.top_n_per_pair {
-            edges.truncate(cfg.top_n_per_pair);
+    };
+    for (_, topk) in by_pair_source {
+        for edge in topk.into_sorted_vec(target_cmp) {
+            let src = edge.source_idx;
+            let topk2 = by_source
+                .entry(src)
+                .or_insert_with(|| TopK::new(cfg.top_n_per_source));
+            topk2.push(edge);
         }
-        after_pair_limit.extend(edges);
     }
 
-    // Step 2 limit: per source_group
-    let mut by_source: BTreeMap<String, Vec<Edge>> = BTreeMap::new();
-    for edge in after_pair_limit {
-        by_source
-            .entry(edge.source_group.clone())
-            .or_default()
-            .push(edge);
+    // Flatten with final global sort.
+    let mut final_edges: Vec<Edge> = Vec::new();
+    let per_source_cmp = |a: &Edge, b: &Edge| {
+        b.score
+            .total_cmp(&a.score)
+            .then_with(|| resolved_pairs[a.pair_idx as usize].ligand.cmp(
+                &resolved_pairs[b.pair_idx as usize].ligand,
+            ))
+            .then_with(|| resolved_pairs[a.pair_idx as usize].receptor.cmp(
+                &resolved_pairs[b.pair_idx as usize].receptor,
+            ))
+            .then_with(|| groups_sorted[a.target_idx as usize].cmp(
+                &groups_sorted[b.target_idx as usize],
+            ))
+    };
+    for (_, topk) in by_source {
+        final_edges.extend(topk.into_sorted_vec(per_source_cmp));
     }
-
-    let mut final_edges = Vec::new();
-    for (_, mut edges) in by_source {
-        edges.sort_by(|a, b| {
-            b.score
-                .total_cmp(&a.score)
-                .then(a.ligand.cmp(&b.ligand))
-                .then(a.receptor.cmp(&b.receptor))
-                .then(a.target_group.cmp(&b.target_group))
-        });
-        if edges.len() > cfg.top_n_per_source {
-            edges.truncate(cfg.top_n_per_source);
-        }
-        final_edges.extend(edges);
-    }
-
     final_edges.sort_by(|a, b| {
         b.score
             .total_cmp(&a.score)
-            .then(a.ligand.cmp(&b.ligand))
-            .then(a.receptor.cmp(&b.receptor))
-            .then(a.source_group.cmp(&b.source_group))
-            .then(a.target_group.cmp(&b.target_group))
+            .then_with(|| resolved_pairs[a.pair_idx as usize].ligand.cmp(
+                &resolved_pairs[b.pair_idx as usize].ligand,
+            ))
+            .then_with(|| resolved_pairs[a.pair_idx as usize].receptor.cmp(
+                &resolved_pairs[b.pair_idx as usize].receptor,
+            ))
+            .then_with(|| groups_sorted[a.source_idx as usize].cmp(
+                &groups_sorted[b.source_idx as usize],
+            ))
+            .then_with(|| groups_sorted[a.target_idx as usize].cmp(
+                &groups_sorted[b.target_idx as usize],
+            ))
     });
 
-    write_edges_raw(&stage2_dir.join("edges_raw.tsv"), &final_edges)?;
-    write_pairs_stats(&stage2_dir.join("pairs_stats.tsv"), &final_edges)?;
+    write_edges_raw(
+        &stage2_dir.join("edges_raw.tsv"),
+        &final_edges,
+        &resolved_pairs,
+        &groups_sorted,
+    )?;
+    write_pairs_stats(
+        &stage2_dir.join("pairs_stats.tsv"),
+        &final_edges,
+        &resolved_pairs,
+    )?;
 
     let summary = Stage2Summary {
         counts: Stage2Counts {
@@ -422,6 +468,139 @@ fn clamp_expr(x: f32, cap: f32) -> f32 {
 
 fn clamp_ratio(x: f32, mean: f32, eps: f32, cap: f32) -> f32 {
     (x / (mean + eps)).clamp(0.0, cap)
+}
+
+#[inline]
+fn pack_u32_pair(hi: u32, lo: u32) -> u64 {
+    ((hi as u64) << 32) | (lo as u64)
+}
+
+/// Deterministic, allocation-light flag-string builder.
+/// Built-in flags (`LOW_COVERAGE_EDGE`, `HIGH_SPECIFICITY`) are inserted at
+/// their sorted position. Label flags are already deduplicated in stage2 setup
+/// and sorted lexicographically here.
+fn build_flags_string(
+    cov_l: f32,
+    cov_r: f32,
+    spec_on: bool,
+    spec_boost: f32,
+    label_flags: &[String],
+) -> String {
+    let low_cov = cov_l.min(cov_r) < COV_WARN;
+    let high_spec = spec_on && spec_boost >= 3.0;
+
+    // Pre-size: each flag is short; estimate.
+    let mut flags: Vec<&str> = Vec::with_capacity(2 + label_flags.len());
+    if high_spec {
+        flags.push("HIGH_SPECIFICITY");
+    }
+    if low_cov {
+        flags.push("LOW_COVERAGE_EDGE");
+    }
+    for lf in label_flags {
+        flags.push(lf.as_str());
+    }
+    flags.sort();
+    flags.dedup();
+    flags.join(",")
+}
+
+/// Bounded top-K accumulator for `Edge`, scored by `Edge::score` (total order
+/// via `f32::total_cmp`). Implemented as a min-heap on the negated score: the
+/// element currently retained with the SMALLEST score sits at the heap root,
+/// so when capacity is reached we compare a new candidate against root.score
+/// and only insert if better — O(log K) per insert, O(N log K) overall.
+///
+/// Drain via `into_sorted_vec(cmp)` applies the final ordering (with tie-breaks)
+/// once at the end.
+struct TopK {
+    cap: usize,
+    heap: BinaryHeap<HeapNode>,
+}
+
+#[derive(Clone)]
+struct HeapNode {
+    // Reverse-ordered so BinaryHeap (max-heap) yields the smallest score at top.
+    score: Reverse<F32Total>,
+    edge: Edge,
+}
+
+#[derive(Clone, Copy)]
+struct F32Total(f32);
+
+impl PartialEq for F32Total {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.total_cmp(&other.0).is_eq()
+    }
+}
+impl Eq for F32Total {}
+impl PartialOrd for F32Total {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for F32Total {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+impl PartialEq for HeapNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.score == other.score
+    }
+}
+impl Eq for HeapNode {}
+impl PartialOrd for HeapNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for HeapNode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score.cmp(&other.score)
+    }
+}
+
+impl TopK {
+    fn new(cap: usize) -> Self {
+        Self {
+            cap,
+            heap: BinaryHeap::with_capacity(cap.saturating_add(1)),
+        }
+    }
+
+    fn push(&mut self, edge: Edge) {
+        if self.cap == 0 {
+            return;
+        }
+        if self.heap.len() < self.cap {
+            self.heap.push(HeapNode {
+                score: Reverse(F32Total(edge.score)),
+                edge,
+            });
+            return;
+        }
+        // Replace root if the new candidate is strictly better.
+        if let Some(top) = self.heap.peek()
+            && edge.score.total_cmp(&top.score.0.0).is_gt()
+        {
+            self.heap.pop();
+            self.heap.push(HeapNode {
+                score: Reverse(F32Total(edge.score)),
+                edge,
+            });
+        }
+    }
+
+    fn into_sorted_vec<F>(self, cmp: F) -> Vec<Edge>
+    where
+        F: FnMut(&Edge, &Edge) -> std::cmp::Ordering,
+    {
+        let mut v: Vec<Edge> = self.heap.into_iter().map(|n| n.edge).collect();
+        v.sort_by(cmp);
+        v
+    }
 }
 
 fn eval_entity(entity: &Entity, group_idx: usize, agg: &AggReader) -> (f32, f32, f32) {
@@ -489,7 +668,7 @@ fn resolve_entity(
     symbol: &str,
     role: &str,
     complex_map: &BTreeMap<(String, String), Vec<CofactorEntry>>,
-    gene_idx_by_name: &BTreeMap<String, usize>,
+    gene_idx_by_name: &AHashMap<&str, usize>,
     gene_stats: &BTreeMap<String, GeneStat>,
     missing_components: &mut usize,
     missing_genes: &mut usize,
@@ -497,7 +676,7 @@ fn resolve_entity(
     if let Some(entries) = complex_map.get(&(role.to_string(), symbol.to_string())) {
         let mut components = Vec::new();
         for c in entries {
-            let Some(&gene_idx) = gene_idx_by_name.get(&c.subunit_symbol) else {
+            let Some(&gene_idx) = gene_idx_by_name.get(c.subunit_symbol.as_str()) else {
                 if c.required {
                     *missing_components += 1;
                     return None;
@@ -588,19 +767,25 @@ fn pattern_match(pat: &str, value: &str) -> bool {
     pat == "*" || pat == value
 }
 
-fn write_edges_raw(path: &Path, edges: &[Edge]) -> Result<()> {
+fn write_edges_raw(
+    path: &Path,
+    edges: &[Edge],
+    resolved_pairs: &[ResolvedPair],
+    groups_sorted: &[String],
+) -> Result<()> {
     let mut lines = Vec::with_capacity(edges.len() + 1);
     lines.push(
         "source_group\ttarget_group\tligand\treceptor\tscore\tL_expr\tR_expr\tcov_L\tcov_R\tspec_L\tspec_R\tflags"
             .to_string(),
     );
     for e in edges {
+        let rp = &resolved_pairs[e.pair_idx as usize];
         lines.push(format!(
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            e.source_group,
-            e.target_group,
-            e.ligand,
-            e.receptor,
+            groups_sorted[e.source_idx as usize],
+            groups_sorted[e.target_idx as usize],
+            rp.ligand,
+            rp.receptor,
             fmt_f32(e.score),
             fmt_f32(e.l_expr),
             fmt_f32(e.r_expr),
@@ -614,11 +799,16 @@ fn write_edges_raw(path: &Path, edges: &[Edge]) -> Result<()> {
     write_tsv_atomic(path, &lines)
 }
 
-fn write_pairs_stats(path: &Path, edges: &[Edge]) -> Result<()> {
+fn write_pairs_stats(
+    path: &Path,
+    edges: &[Edge],
+    resolved_pairs: &[ResolvedPair],
+) -> Result<()> {
     let mut by_pair: BTreeMap<(String, String), (usize, f32)> = BTreeMap::new();
     for e in edges {
+        let rp = &resolved_pairs[e.pair_idx as usize];
         by_pair
-            .entry((e.ligand.clone(), e.receptor.clone()))
+            .entry((rp.ligand.clone(), rp.receptor.clone()))
             .and_modify(|v| {
                 v.0 += 1;
                 if e.score > v.1 {

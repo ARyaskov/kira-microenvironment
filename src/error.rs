@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -61,7 +61,8 @@ impl ErrorKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("{}: {message}", kind.code())]
 pub struct KiraError {
     pub kind: ErrorKind,
     pub message: String,
@@ -75,13 +76,5 @@ impl KiraError {
         }
     }
 }
-
-impl Display for KiraError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.kind.code(), self.message)
-    }
-}
-
-impl std::error::Error for KiraError {}
 
 pub type Result<T> = std::result::Result<T, KiraError>;
